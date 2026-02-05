@@ -739,8 +739,49 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         let discussionScore: Double
         
         if isRecording {
-            // During recording: Use simulated silence (score = 0.0) for detection
+            // During recording: Calculate REAL score for silence detection
+            let isSpeechAggregated = speechCount > (framesPerSecond / 2)
+            let isLoudAggregated = loudCount > (framesPerSecond / 2)
+            
+            // Add to sliding window
+            secondsWindow.append((isSpeech: isSpeechAggregated, isLoud: isLoudAggregated))
+            if secondsWindow.count > windowSize {
+                secondsWindow.removeFirst()
+            }
+            
+            // Calculate densities
+            let speechDensity = Double(secondsWindow.filter { $0.isSpeech }.count) / Double(windowSize)
+            let loudDensity = Double(secondsWindow.filter { $0.isLoud }.count) / Double(windowSize)
+            
+            // Calculate REAL score (for silence detection)
+            let speechNorm = min(speechDensity / speechDensityMin, 1.0)
+            let loudNorm = min(loudDensity / loudDensityMin, 1.0)
+            let realScore = (speechNorm + loudNorm) / 2.0
+            
+            // Detect silence during auto-recording (for 10s + 60s timers)
+            if autoRecordingActive {
+                if realScore < 0.3 { // Low score = silence
+                    if silenceStartTime == nil {
+                        silenceStartTime = Date()
+                        print("[AudioTriggerNative-iOS] 🔇 Silence detected during recording, starting confirmation phase (10s)")
+                    } else if let startTime = silenceStartTime {
+                        let silenceDuration = Date().timeIntervalSince(startTime)
+                        if silenceDuration >= silenceDecaySeconds && !inEndHoldPhase {
+                            startEndHoldTimer()
+                        }
+                    }
+                } else {
+                    // Discussion resumed during recording
+                    if silenceStartTime != nil || inEndHoldPhase {
+                        print("[AudioTriggerNative-iOS] 🔊 Discussion resumed during recording! Cancelling end timers")
+                        cancelEndTimers()
+                    }
+                }
+            }
+            
+            // Send score=0.0 to UI (Android behavior - graph shows silence during recording)
             discussionScore = 0.0
+            return
         } else {
             // During monitoring: Calculate real score
             // Check if more than 50% of frames were speech/loud
@@ -774,7 +815,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
         
-        // Always call detectFight with the score (real or simulated)
+        // Call detectFight with normal score (only during monitoring)
         detectFight(score: discussionScore)
     }
     
