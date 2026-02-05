@@ -453,6 +453,42 @@ export function HomePage({ onLogout }: HomePageProps) {
             </TooltipContent>
           </Tooltip>
 
+          {/* DEBUG: Force start button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  toast({
+                    title: '🔵 DEBUG: Forçando start()',
+                    description: `hasAllRequired=${hasAllRequired}, isCapturing=${audioTrigger.isCapturing}`,
+                    duration: 3000,
+                  });
+                  hybridAudioTrigger.start().then(() => {
+                    toast({
+                      title: '✅ start() completou',
+                      duration: 3000,
+                    });
+                  }).catch(err => {
+                    toast({
+                      title: '❌ start() falhou',
+                      description: String(err),
+                      variant: 'destructive',
+                      duration: 5000,
+                    });
+                  });
+                }}
+                className="bg-blue-500 hover:bg-blue-600"
+              >
+                <Info className="w-5 h-5 text-white" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>DEBUG: Forçar start()</p>
+            </TooltipContent>
+          </Tooltip>
+
           {/* Upload file button */}
           <Tooltip>
             <TooltipTrigger asChild>
