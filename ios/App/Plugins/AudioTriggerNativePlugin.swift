@@ -24,7 +24,6 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateConfig", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getMetrics", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setPanicActive", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: - Properties
@@ -73,8 +72,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // Auto-recording on fight detection
     private var autoRecordingActive = false
     
-    // Panic mode
-    private var isPanicActive = false
+    // Panic manager (shared state)
+    private let panicManager = PanicManager.shared
     
     // Discussion ending detection (Android-compatible)
     private var silenceStartTime: Date? // When silence started
@@ -360,23 +359,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
     
-    @objc func setPanicActive(_ call: CAPPluginCall) {
-        guard let active = call.getBool("active") else {
-            call.reject("Missing 'active' parameter")
-            return
-        }
-        
-        isPanicActive = active
-        
-        if active {
-            print("[AudioTriggerNative-iOS] 🚨 Panic mode ACTIVATED - 10min timeout DISABLED")
-        } else {
-            print("[AudioTriggerNative-iOS] ✅ Panic mode DEACTIVATED - 10min timeout ENABLED")
-        }
-        
-        call.resolve(["success": true, "isPanicActive": isPanicActive])
-    }
-    
+
     // MARK: - Monitoring Period Check
     
     private func isWithinMonitoringPeriod() -> Bool {
@@ -1001,7 +984,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             guard let self = self else { return }
             
             // Ignore timeout if panic is active
-            if self.isPanicActive {
+            if self.panicManager.isPanicActive {
                 print("[AudioTriggerNative-iOS] ⏰ 10min timeout reached but IGNORED (panic active)")
                 // Restart timer for another 10 minutes
                 self.startAbsoluteSilenceTimer()
