@@ -93,6 +93,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var continuousCalibrationEnabled = true
     private var lastCalibrationUpdate: Date?
     private let calibrationUpdateInterval: TimeInterval = 300.0 // 5 minutes
+    
+    // Ping/Heartbeat (background keep-alive)
+    private var pingTimer: Timer?
+    private let pingInterval: TimeInterval = 30.0 // 30 seconds
+    private var lastPingTime: Date?
     private var recentAmplitudes: [Float] = []
     private let recentAmplitudesMaxSize = 300 // 5 minutes at 1 sample/sec
     
@@ -446,6 +451,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         // Start metrics update timer
         startMetricsTimer()
         
+        // Start ping timer for background keep-alive
+        startPingTimer()
+        
         print("[AudioTriggerNative-iOS] ✅ Monitoring started (calibrating...) - NOT recording")
         print("[AudioTriggerNative-iOS] 📊 Metrics timer should now be sending audioMetrics every 0.5s")
     }
@@ -455,6 +463,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Stop metrics timer
         stopMetricsTimer()
+        
+        // Stop ping timer
+        stopPingTimer()
         
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
@@ -1462,6 +1473,114 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         default:
             break
         }
+    }
+    
+    // MARK: - Ping Timer (Background Keep-Alive)
+    
+    private func startPingTimer() {
+        // Stop existing timer if any
+        stopPingTimer()
+        
+        // Send immediate ping
+        sendPing()
+        
+        // Create timer on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.pingTimer = Timer.scheduledTimer(withTimeInterval: self.pingInterval, repeats: true) { [weak self] _ in
+                self?.sendPing()
+            }
+            
+            print("[AudioTriggerNative-iOS] 🏓 Ping timer started (interval: \(self.pingInterval)s)")
+        }
+    }
+    
+    private func stopPingTimer() {
+        pingTimer?.invalidate()
+        pingTimer = nil
+        print("[AudioTriggerNative-iOS] ⏹️ Ping timer stopped")
+    }
+    
+    private func sendPing() {
+        guard let token = sessionToken, let email = emailUsuario else {
+            print("[AudioTriggerNative-iOS] ⚠️ Cannot send ping: missing session token or email")
+            return
+        }
+        
+        // Get device info
+        let device = UIDevice.current
+        let deviceModel = "\(device.model) (iOS \(device.systemVersion))"
+        let deviceId = UserDefaults.standard.string(forKey: "device_id") ?? "unknown"
+        
+        // Get timezone offset
+        let timezoneOffset = TimeZone.current.secondsFromGMT() / 60
+        
+        // Build payload
+        let payload: [String: Any] = [
+            "action": "pingMobile",
+            "session_token": token,
+            "email_usuario": email,
+            "device_id": deviceId,
+            "device_model": deviceModel,
+            "is_recording": isRecording,
+            "is_monitoring": !isRecording, // If not recording, then monitoring
+            "timezone_offset_minutes": timezoneOffset
+        ]
+        
+        // Get API URL from config
+        guard let apiUrl = getApiUrl() else {
+            print("[AudioTriggerNative-iOS] ⚠️ Cannot send ping: API URL not configured")
+            return
+        }
+        
+        // Create request
+        guard let url = URL(string: apiUrl) else {
+            print("[AudioTriggerNative-iOS] ❌ Invalid API URL: \(apiUrl)")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        } catch {
+            print("[AudioTriggerNative-iOS] ❌ Failed to serialize ping payload: \(error)")
+            return
+        }
+        
+        // Send request (background-safe)
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("[AudioTriggerNative-iOS] ❌ Ping failed: \(error.localizedDescription)")
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    self.lastPingTime = Date()
+                    print("[AudioTriggerNative-iOS] 🏓 Ping sent successfully (recording: \(self.isRecording), monitoring: \(!self.isRecording))")
+                } else {
+                    print("[AudioTriggerNative-iOS] ⚠️ Ping returned status \(httpResponse.statusCode)")
+                }
+            }
+        }
+        
+        task.resume()
+    }
+    
+    private func getApiUrl() -> String? {
+        // Try to get from UserDefaults (set by JavaScript)
+        if let url = UserDefaults.standard.string(forKey: "api_url") {
+            return url
+        }
+        
+        // Fallback to production URL
+        return "https://amparamulher.com.br/api/mobile.php"
     }
     
     // MARK: - Event Notification
