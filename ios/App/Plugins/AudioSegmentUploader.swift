@@ -1,12 +1,13 @@
 import Foundation
 import AVFoundation
-import ffmpegkit
+import SwiftOgg
 
 /**
  * AudioSegmentUploader - Handles audio segment recording and upload
  * 
  * Features:
  * - Records audio to M4A files (AAC codec)
+ * - Converts M4A to OGG (Opus) before upload
  * - Uploads segments to server every 30 seconds
  * - Includes timezone in requests
  * - Automatic cleanup of uploaded files
@@ -153,7 +154,7 @@ class AudioSegmentUploader {
         body.append("Content-Disposition: form-data; name=\"session_token\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(sessionToken)\r\n".data(using: .utf8)!)
         
-        // Add e        // Add email_usuario field (REQUIRED!)
+        // Add email_usuario field (REQUIRED!)
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"email_usuario\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(emailUsuario)\r\n".data(using: .utf8)!)
@@ -228,33 +229,21 @@ class AudioSegmentUploader {
         // Delete output file if exists
         try? FileManager.default.removeItem(at: outputURL)
         
-        // Build FFmpeg command
-        // -i input.m4a: input file
-        // -c:a libvorbis: use Vorbis codec for OGG
-        // -q:a 4: quality level (0-10, 4 is good balance)
-        let command = "-i \"\(inputURL.path)\" -c:a libvorbis -q:a 4 \"\(outputURL.path)\""
+        print("[AudioSegmentUploader] 🔄 Converting M4A to OGG using swift-ogg")
         
-        print("[AudioSegmentUploader] 🔄 Converting M4A to OGG: \(command)")
-        
-        // Execute FFmpeg command
-        FFmpegKit.executeAsync(command) { session in
-            guard let session = session else {
-                print("[AudioSegmentUploader] ❌ FFmpeg session is nil")
-                completion(false)
-                return
-            }
-            
-            let returnCode = session.getReturnCode()
-            
-            if ReturnCode.isSuccess(returnCode) {
-                print("[AudioSegmentUploader] ✅ FFmpeg conversion successful")
-                completion(true)
-            } else {
-                print("[AudioSegmentUploader] ❌ FFmpeg conversion failed with code: \(String(describing: returnCode))")
-                if let output = session.getOutput() {
-                    print("[AudioSegmentUploader] FFmpeg output: \(output)")
+        // Use swift-ogg library to convert M4A to Opus/OGG
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try OGGConverter.convertM4aFileToOpusOGG(src: inputURL, dest: outputURL)
+                print("[AudioSegmentUploader] ✅ Conversion successful")
+                DispatchQueue.main.async {
+                    completion(true)
                 }
-                completion(false)
+            } catch {
+                print("[AudioSegmentUploader] ❌ Conversion failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    completion(false)
+                }
             }
         }
     }
