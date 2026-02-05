@@ -153,13 +153,15 @@ class HybridAudioTriggerService {
     }
 
     // Gate 5: Check app state - MUST be in foreground
-    const appState = await App.getState();
-    if (!appState.isActive) {
-      console.log('[HybridAudioTrigger] 🚫 BLOCKED_NOT_FOREGROUND: Cannot start native service in background (Android 14/15)');
-      console.log('[HybridAudioTrigger] ⏳ Will retry when app returns to foreground');
-      this.pendingStart = true;
-      return;
-    }
+    // DISABLED: App.getState() causes "not implemented" error on iOS
+    // const appState = await App.getState();
+    // if (!appState.isActive) {
+    //   console.log('[HybridAudioTrigger] 🚫 BLOCKED_NOT_FOREGROUND: Cannot start native service in background (Android 14/15)');
+    //   console.log('[HybridAudioTrigger] ⏳ Will retry when app returns to foreground');
+    //   this.pendingStart = true;
+    //   return;
+    // }
+    console.log('[HybridAudioTrigger] ⚠️ Gate 5 DISABLED (App.getState not working on iOS)');
 
     // Gate 6: RECORD_AUDIO permission
     const permissionStatus = await AudioPermission.checkPermission();
