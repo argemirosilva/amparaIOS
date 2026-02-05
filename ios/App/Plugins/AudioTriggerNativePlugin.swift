@@ -78,6 +78,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // Background task
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     
+    // Metrics update timer
+    private var metricsTimer: Timer?
+    private let metricsUpdateInterval: TimeInterval = 0.5 // 500ms (2x per second)
+    
     // MARK: - Capacitor Methods
     
     @objc func start(_ call: CAPPluginCall) {
@@ -345,11 +349,17 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         // NÃO iniciar segment timer
         // NÃO reportar ao servidor
         
+        // Start metrics update timer
+        startMetricsTimer()
+        
         print("[AudioTriggerNative-iOS] ✅ Monitoring started (calibrating...) - NOT recording")
     }
     
     private func stopMonitoring() {
         print("[AudioTriggerNative-iOS] 🛑 Stopping monitoring...")
+        
+        // Stop metrics timer
+        stopMetricsTimer()
         
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
@@ -773,6 +783,64 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             UIApplication.shared.endBackgroundTask(backgroundTaskID)
             backgroundTaskID = .invalid
         }
+    }
+    
+    // MARK: - Metrics Timer
+    
+    private func startMetricsTimer() {
+        // Stop existing timer if any
+        stopMetricsTimer()
+        
+        // Create timer on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.metricsTimer = Timer.scheduledTimer(withTimeInterval: self.metricsUpdateInterval, repeats: true) { [weak self] _ in
+                self?.sendMetricsUpdate()
+            }
+            
+            print("[AudioTriggerNative-iOS] ⏱️ Metrics timer started (every \(self.metricsUpdateInterval)s)")
+        }
+    }
+    
+    private func stopMetricsTimer() {
+        metricsTimer?.invalidate()
+        metricsTimer = nil
+        print("[AudioTriggerNative-iOS] ⏹️ Metrics timer stopped")
+    }
+    
+    private func sendMetricsUpdate() {
+        let threshold = baselineAmplitude * fightThresholdMultiplier
+        
+        // Calculate score (0-1)
+        var score: Float = 0.0
+        if baselineAmplitude > 0 {
+            score = min(currentAmplitude / threshold, 1.0)
+        }
+        
+        // Determine state
+        var state = "IDLE"
+        if !isCalibrated {
+            state = "CALIBRATING"
+        } else if isFightDetected {
+            state = "DISCUSSION_DETECTED"
+        } else {
+            state = "MONITORING"
+        }
+        
+        // Send metrics event to JavaScript
+        notifyEvent("audioMetrics", data: [
+            "score": score,
+            "rmsDb": currentAmplitude,
+            "amplitude": currentAmplitude,
+            "baseline": baselineAmplitude,
+            "threshold": threshold,
+            "isSpeech": currentAmplitude > baselineAmplitude * 1.5,
+            "isLoud": currentAmplitude > threshold,
+            "isCalibrated": isCalibrated,
+            "state": state,
+            "timestamp": Int(Date().timeIntervalSince1970 * 1000)
+        ])
     }
     
     // MARK: - Event Notification
