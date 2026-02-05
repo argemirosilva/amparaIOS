@@ -444,10 +444,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private func startRecording() throws {
         print("[AudioTriggerNative-iOS] 🎤 Starting recording...")
         
-        // If already monitoring, stop monitoring first
-        if audioEngine != nil && !isRecording {
-            print("[AudioTriggerNative-iOS] 🔄 Stopping monitoring to start recording")
-            stopMonitoring()
+        // If already monitoring, reuse the audioEngine to keep detection active
+        let reusingEngine = (audioEngine != nil && !isRecording)
+        if reusingEngine {
+            print("[AudioTriggerNative-iOS] ♻️ Reusing existing audioEngine to keep detection active")
         }
         
         // Configure audio session for background recording
@@ -455,10 +455,31 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
         try audioSession.setActive(true)
         
-        // Create audio engine
-        audioEngine = AVAudioEngine()
+        // Preserve calibration state if reusing engine
+        let wasCalibrated = isCalibrated
+        let savedNoiseFloor = noiseFloor
+        
+        // Create or reuse audio engine
+        if !reusingEngine {
+            audioEngine = AVAudioEngine()
+            guard let engine = audioEngine else {
+                throw NSError(domain: "AudioTriggerNative", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio engine"])
+            }
+            
+            let inputNode = engine.inputNode
+            let inputFormat = inputNode.outputFormat(forBus: 0)
+            
+            // Install tap on input node for amplitude analysis
+            inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, time in
+                self?.processAudioBuffer(buffer)
+            }
+            
+            // Start engine
+            try engine.start()
+        }
+        
         guard let engine = audioEngine else {
-            throw NSError(domain: "AudioTriggerNative", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio engine"])
+            throw NSError(domain: "AudioTriggerNative", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio engine not available"])
         }
         
         let inputNode = engine.inputNode
@@ -468,14 +489,6 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         guard let recordingFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: channels, interleaved: false) else {
             throw NSError(domain: "AudioTriggerNative", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to create recording format"])
         }
-        
-        // Install tap on input node for amplitude analysis
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, time in
-            self?.processAudioBuffer(buffer)
-        }
-        
-        // Start engine
-        try engine.start()
         
         // Generate session ID
         sessionId = "ios_\(Date().timeIntervalSince1970)_\(UUID().uuidString.prefix(8))"
@@ -498,9 +511,18 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         isRecording = true
         recordingStartTime = Date()
         segmentIndex = 0
-        calibrationStartTime = Date()
-        calibrationSamples = []
-        isCalibrated = false
+        
+        // Preserve calibration if reusing engine, otherwise recalibrate
+        if reusingEngine && wasCalibrated {
+            isCalibrated = true
+            noiseFloor = savedNoiseFloor
+            print("[AudioTriggerNative-iOS] ✅ Keeping calibration: noiseFloor=\(noiseFloor) dB")
+        } else {
+            calibrationStartTime = Date()
+            calibrationSamples = []
+            isCalibrated = false
+            print("[AudioTriggerNative-iOS] 🔄 Starting new calibration")
+        }
         
         // Start background task
         startBackgroundTask()
