@@ -24,6 +24,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateConfig", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getMetrics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setPanicActive", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: - Properties
@@ -72,12 +73,19 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // Auto-recording on fight detection
     private var autoRecordingActive = false
     
+    // Panic mode
+    private var isPanicActive = false
+    
     // Discussion ending detection (Android-compatible)
     private var silenceStartTime: Date? // When silence started
     private let silenceDecaySeconds: TimeInterval = 10.0 // Confirmation phase
     private var endHoldTimer: Timer? // 60-second safety buffer timer
     private let endHoldSeconds: TimeInterval = 60.0 // Safety buffer phase
     private var inEndHoldPhase = false
+    
+    // Absolute silence timeout (fallback - 10 minutes)
+    private var absoluteSilenceTimer: Timer?
+    private let absoluteSilenceTimeout: TimeInterval = 600.0 // 10 minutes
     
     // Monitoring periods
     private var monitoringPeriods: [[String: String]] = []
@@ -352,6 +360,23 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
     
+    @objc func setPanicActive(_ call: CAPPluginCall) {
+        guard let active = call.getBool("active") else {
+            call.reject("Missing 'active' parameter")
+            return
+        }
+        
+        isPanicActive = active
+        
+        if active {
+            print("[AudioTriggerNative-iOS] 🚨 Panic mode ACTIVATED - 10min timeout DISABLED")
+        } else {
+            print("[AudioTriggerNative-iOS] ✅ Panic mode DEACTIVATED - 10min timeout ENABLED")
+        }
+        
+        call.resolve(["success": true, "isPanicActive": isPanicActive])
+    }
+    
     // MARK: - Monitoring Period Check
     
     private func isWithinMonitoringPeriod() -> Bool {
@@ -551,6 +576,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Start segment timer
         startSegmentTimer()
+        
+        // Start absolute silence timeout (10 minutes fallback)
+        startAbsoluteSilenceTimer()
         
         // Notify JS
         notifyEvent("nativeRecordingStarted", data: [
@@ -778,6 +806,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                         print("[AudioTriggerNative-iOS] 🔊 Discussion resumed during recording! Cancelling end timers")
                         cancelEndTimers()
                     }
+                    
+                    // Reset 10-minute absolute silence timer (audio detected above noise floor)
+                    resetAbsoluteSilenceTimer()
                 }
             }
             
@@ -953,7 +984,59 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         endHoldTimer?.invalidate()
         endHoldTimer = nil
         inEndHoldPhase = false
+        
+        // Also cancel absolute silence timeout
+        absoluteSilenceTimer?.invalidate()
+        absoluteSilenceTimer = nil
+        
         print("[AudioTriggerNative-iOS] ❌ End timers cancelled (discussion resumed)")
+    }
+    
+    private func startAbsoluteSilenceTimer() {
+        // Cancel existing timer
+        absoluteSilenceTimer?.invalidate()
+        
+        // Start 10-minute timeout
+        absoluteSilenceTimer = Timer.scheduledTimer(withTimeInterval: absoluteSilenceTimeout, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // Ignore timeout if panic is active
+            if self.isPanicActive {
+                print("[AudioTriggerNative-iOS] ⏰ 10min timeout reached but IGNORED (panic active)")
+                // Restart timer for another 10 minutes
+                self.startAbsoluteSilenceTimer()
+                return
+            }
+            
+            print("[AudioTriggerNative-iOS] ⏰ 10min absolute silence timeout reached - stopping recording")
+            
+            // Stop recording with timeout reason
+            self.stopReason = "timeout"
+            self.stopRecordingInternal()
+            self.autoRecordingActive = false
+            self.cancelEndTimers()
+            
+            // Restart monitoring after 1s delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self = self else { return }
+                do {
+                    try self.startMonitoring()
+                    print("[AudioTriggerNative-iOS] ✅ Monitoring restarted after timeout")
+                } catch {
+                    print("[AudioTriggerNative-iOS] ❌ Failed to restart monitoring: \(error)")
+                }
+            }
+        }
+        
+        print("[AudioTriggerNative-iOS] ⏱️ Absolute silence timer started (10 minutes)")
+    }
+    
+    private func resetAbsoluteSilenceTimer() {
+        // Only reset if recording and timer is active
+        guard isRecording, absoluteSilenceTimer != nil else { return }
+        
+        // Restart timer (reset countdown)
+        startAbsoluteSilenceTimer()
     }
     
     // MARK: - Segment Upload
