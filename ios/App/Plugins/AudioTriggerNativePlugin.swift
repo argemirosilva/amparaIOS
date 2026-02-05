@@ -90,11 +90,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: - Capacitor Methods
     
     @objc func start(_ call: CAPPluginCall) {
-        print("\n\n")
-        print("========================================")
-        print("[AudioTriggerNative-iOS] 🟢 START CALLED (monitoring only)")
-        print("========================================")
-        print("\n\n")
+        print("\n\n\n\n\n")
+        print("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+        print("🔴 START() FOI CHAMADO DO JAVASCRIPT! 🔴")
+        print("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+        print("\n\n\n\n\n")
         
         // Enable battery monitoring
         UIDevice.current.isBatteryMonitoringEnabled = true

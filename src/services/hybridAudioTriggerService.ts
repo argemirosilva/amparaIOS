@@ -111,7 +111,13 @@ class HybridAudioTriggerService {
    * MUST be called while app is in FOREGROUND
    */
   async start(config?: any) {
-    console.log('[HybridAudioTrigger] 🚀 start() called');
+    console.log('\n\n\n');
+    console.log('🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡');
+    console.log('🟡 [HybridAudioTrigger] start() CHAMADO!');
+    console.log('🟡 mode=', this.mode);
+    console.log('🟡 startInProgress=', this.startInProgress);
+    console.log('🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡');
+    console.log('\n\n\n');
 
     // Store config if provided
     if (config) {
@@ -175,6 +181,14 @@ class HybridAudioTriggerService {
       // iOS: Plugin nativo Swift está disponível
       // Android: Plugin nativo Java está disponível
       const options = this.nativeConfig ? { config: this.nativeConfig } : {};
+      
+      console.log('\n\n\n');
+      console.log('🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠');
+      console.log('🟠 CHAMANDO AudioTriggerNative.start() AGORA!');
+      console.log('🟠 options=', JSON.stringify(options));
+      console.log('🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠🟠');
+      console.log('\n\n\n');
+      
       const result = await AudioTriggerNative.start(options);
       
       if (result.alreadyRunning) {

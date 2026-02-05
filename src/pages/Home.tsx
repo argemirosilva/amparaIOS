@@ -203,7 +203,13 @@ export function HomePage({ onLogout }: HomePageProps) {
   // Phase 4: Auto-start audio monitoring on login (keeps app alive 24/7)
   // Only stops on logout
   useEffect(() => {
-    console.log('[Home] 🔍 Auto-start check: hasAllRequired=', hasAllRequired, 'isCapturing=', audioTrigger.isCapturing);
+    console.log('\n\n\n');
+    console.log('🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵');
+    console.log('🔵 [Home] useEffect AUTO-START executando!');
+    console.log('🔵 hasAllRequired=', hasAllRequired);
+    console.log('🔵 isCapturing=', audioTrigger.isCapturing);
+    console.log('🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵🔵');
+    console.log('\n\n\n');
     
     if (!hasAllRequired) {
       console.log('[Home] ❌ Permissions not granted, skipping auto-start');
@@ -222,7 +228,11 @@ export function HomePage({ onLogout }: HomePageProps) {
     // - Foreground/background transitions
     console.log('[Home] 🟢 Phase 4: Auto-starting hybrid audio trigger...');
     const timer = setTimeout(() => {
-      console.log('[Home] 🚀 Calling hybridAudioTrigger.start() now...');
+      console.log('\n\n\n');
+    console.log('🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢');
+    console.log('🟢 CHAMANDO hybridAudioTrigger.start() AGORA!');
+    console.log('🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢');
+    console.log('\n\n\n');
       hybridAudioTrigger.start().then(() => {
         console.log('[Home] ✅ hybridAudioTrigger.start() completed successfully');
       }).catch(err => {
