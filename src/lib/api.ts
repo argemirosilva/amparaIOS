@@ -483,10 +483,15 @@ export async function syncConfigMobile(): Promise<ApiResponse<ConfigSyncResponse
  * Ping server to maintain online status
  */
 export async function pingMobile(isRecording?: boolean, isMonitoring?: boolean): Promise<ApiResponse<PingResponse>> {
+  console.log('[API] pingMobile called with:', { isRecording, isMonitoring });
+  
   try {
     // Import device info plugin dynamically to avoid circular dependencies
     const DeviceInfoExtended = (await import('@/plugins/deviceInfo')).default;
+    console.log('[API] DeviceInfoExtended imported successfully');
+    
     const deviceInfo = await DeviceInfoExtended.getExtendedInfo();
+    console.log('[API] Device info retrieved:', deviceInfo);
     
     const payload = {
       bateria_percentual: deviceInfo.batteryLevel,
@@ -499,16 +504,21 @@ export async function pingMobile(isRecording?: boolean, isMonitoring?: boolean):
       timezone_offset_minutes: deviceInfo.timezoneOffsetMinutes,
     };
     
-    console.log('[API] pingMobile payload:', JSON.stringify(payload, null, 2));
+    console.log('[API] pingMobile FULL payload:', JSON.stringify(payload, null, 2));
     
     return mobileApi<PingResponse>('pingMobile', payload);
   } catch (error) {
-    console.warn('[API] Failed to get device info for ping, sending without it:', error);
-    // Fallback: send ping without device info
-    return mobileApi<PingResponse>('pingMobile', {
+    console.error('[API] ERROR in pingMobile:', error);
+    console.warn('[API] Falling back to minimal payload');
+    
+    const fallbackPayload = {
       is_recording: isRecording ?? false,
       is_monitoring: isMonitoring ?? false,
-    });
+    };
+    
+    console.log('[API] pingMobile FALLBACK payload:', JSON.stringify(fallbackPayload, null, 2));
+    
+    return mobileApi<PingResponse>('pingMobile', fallbackPayload);
   }
 }
 
