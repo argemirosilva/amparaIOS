@@ -482,29 +482,29 @@ export async function syncConfigMobile(): Promise<ApiResponse<ConfigSyncResponse
 /**
  * Ping server to maintain online status
  */
-export async function pingMobile(): Promise<ApiResponse<PingResponse>> {
+export async function pingMobile(isRecording?: boolean, isMonitoring?: boolean): Promise<ApiResponse<PingResponse>> {
   try {
     // Import device info plugin dynamically to avoid circular dependencies
     const DeviceInfoExtended = (await import('@/plugins/deviceInfo')).default;
     const deviceInfo = await DeviceInfoExtended.getExtendedInfo();
     
     return mobileApi<PingResponse>('pingMobile', {
-      device_model: deviceInfo.deviceModel,
-      battery_level: deviceInfo.batteryLevel,
+      bateria_percentual: deviceInfo.batteryLevel,
       is_charging: deviceInfo.isCharging,
-      android_version: deviceInfo.androidVersion,
-      ios_version: deviceInfo.iosVersion,
-      app_version: deviceInfo.appVersion,
-      is_ignoring_battery_optimization: deviceInfo.isIgnoringBatteryOptimization,
-      connection_type: deviceInfo.connectionType,
-      wifi_signal_strength: deviceInfo.wifiSignalStrength,
+      dispositivo_info: deviceInfo.deviceModel,
+      versao_app: deviceInfo.appVersion,
+      is_recording: isRecording ?? false,
+      is_monitoring: isMonitoring ?? false,
       timezone: deviceInfo.timezone,
       timezone_offset_minutes: deviceInfo.timezoneOffsetMinutes,
     });
   } catch (error) {
     console.warn('[API] Failed to get device info for ping, sending without it:', error);
     // Fallback: send ping without device info
-    return mobileApi<PingResponse>('pingMobile');
+    return mobileApi<PingResponse>('pingMobile', {
+      is_recording: isRecording ?? false,
+      is_monitoring: isMonitoring ?? false,
+    });
   }
 }
 

@@ -12,6 +12,8 @@ interface UseHeartbeatOptions {
   interval?: number;       // Ping interval in ms (default: 60 sec)
   maxRetries?: number;     // Max consecutive failures before stopping (default: 5)
   autoStart?: boolean;     // Start automatically on mount (default: false)
+  isRecording?: boolean;   // Is currently recording
+  isMonitoring?: boolean;  // Is currently monitoring
 }
 
 const DEFAULT_INTERVAL = 30 * 1000; // 30 seconds
@@ -22,6 +24,8 @@ export function useHeartbeat(options: UseHeartbeatOptions = {}) {
     interval = DEFAULT_INTERVAL,
     maxRetries = MAX_RETRIES,
     autoStart = false,
+    isRecording = false,
+    isMonitoring = false,
   } = options;
 
   const [state, setState] = useState<HeartbeatState>({
@@ -40,7 +44,7 @@ export function useHeartbeat(options: UseHeartbeatOptions = {}) {
       return false;
     }
 
-    const result = await pingMobile();
+    const result = await pingMobile(isRecording, isMonitoring);
 
     if (result.error || !result.data) {
       failureCountRef.current++;
@@ -71,7 +75,7 @@ export function useHeartbeat(options: UseHeartbeatOptions = {}) {
     }));
 
     return true;
-  }, [maxRetries]);
+  }, [maxRetries, isRecording, isMonitoring]);
 
   // Start heartbeat
   const start = useCallback(() => {

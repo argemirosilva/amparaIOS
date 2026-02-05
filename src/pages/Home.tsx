@@ -74,7 +74,13 @@ export function HomePage({ onLogout }: HomePageProps) {
   const audioTrigger = useAudioTriggerSingleton();
   
   // Heartbeat - ping server every 30 seconds
-  useHeartbeat({ autoStart: true, interval: 30000 });
+  // Pass recording status to heartbeat
+  useHeartbeat({ 
+    autoStart: true, 
+    interval: 30000,
+    isRecording: recording.isRecording,
+    isMonitoring: audioTrigger.isCapturing
+  });
   
   // REMOVED: Update config from server (use local defaults only)
   // audioTrigger.updateConfig() no longer called
