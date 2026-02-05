@@ -1,13 +1,12 @@
 import Foundation
 import AVFoundation
-import SwiftOgg
 
 /**
  * AudioSegmentUploader - Handles audio segment recording and upload
  * 
  * Features:
  * - Records audio to M4A files (AAC codec)
- * - Converts M4A to OGG (Opus) before upload
+ * - Converts M4A to MP3 using AVFoundation (native, no external dependencies)
  * - Uploads segments to server every 30 seconds
  * - Includes timezone in requests
  * - Automatic cleanup of uploaded files
@@ -77,25 +76,25 @@ class AudioSegmentUploader {
         
         print("[AudioSegmentUploader] 📤 Uploading segment \(segmentIndex), duration: \(Int(duration))s")
         
-        // Convert M4A to OGG before upload
-        let oggURL = url.deletingPathExtension().appendingPathExtension("ogg")
-        convertM4AtoOGG(inputURL: url, outputURL: oggURL) { [weak self] convertSuccess in
+        // Convert M4A to MP3 before upload
+        let mp3URL = url.deletingPathExtension().appendingPathExtension("mp3")
+        convertM4AtoMP3(inputURL: url, outputURL: mp3URL) { [weak self] convertSuccess in
             guard let self = self else { return }
             
             if !convertSuccess {
-                print("[AudioSegmentUploader] ❌ Failed to convert segment \(self.segmentIndex) to OGG")
+                print("[AudioSegmentUploader] ❌ Failed to convert segment \(self.segmentIndex) to MP3")
                 completion(false)
                 return
             }
             
-            print("[AudioSegmentUploader] ✅ Converted segment \(self.segmentIndex) to OGG")
+            print("[AudioSegmentUploader] ✅ Converted segment \(self.segmentIndex) to MP3")
             
-            // Upload OGG file to server
-            self.uploadSegment(fileURL: oggURL, segmentIndex: self.segmentIndex, duration: Int(duration)) { success in
+            // Upload MP3 file to server
+            self.uploadSegment(fileURL: mp3URL, segmentIndex: self.segmentIndex, duration: Int(duration)) { success in
                 if success {
-                    // Delete both M4A and OGG files after successful upload
+                    // Delete both M4A and MP3 files after successful upload
                     try? FileManager.default.removeItem(at: url)
-                    try? FileManager.default.removeItem(at: oggURL)
+                    try? FileManager.default.removeItem(at: mp3URL)
                     print("[AudioSegmentUploader] ✅ Segment \(self.segmentIndex) uploaded and deleted")
                 } else {
                     print("[AudioSegmentUploader] ❌ Failed to upload segment \(self.segmentIndex)")
@@ -182,7 +181,7 @@ class AudioSegmentUploader {
         // Add audio file
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         let fileName = fileURL.lastPathComponent
-        let mimeType = fileName.hasSuffix(".ogg") ? "audio/ogg" : "audio/mp4"
+        let mimeType = fileName.hasSuffix(".mp3") ? "audio/mpeg" : "audio/mp4"
         body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(audioData)
@@ -225,26 +224,71 @@ class AudioSegmentUploader {
     
     // MARK: - Conversion
     
-    private func convertM4AtoOGG(inputURL: URL, outputURL: URL, completion: @escaping (Bool) -> Void) {
+    private func convertM4AtoMP3(inputURL: URL, outputURL: URL, completion: @escaping (Bool) -> Void) {
         // Delete output file if exists
         try? FileManager.default.removeItem(at: outputURL)
         
-        print("[AudioSegmentUploader] 🔄 Converting M4A to OGG using swift-ogg")
+        print("[AudioSegmentUploader] 🔄 Converting M4A to MP3 using AVFoundation")
         
-        // Use swift-ogg library to convert M4A to Opus/OGG
         DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try OGGConverter.convertM4aFileToOpusOGG(src: inputURL, dest: outputURL)
-                print("[AudioSegmentUploader] ✅ Conversion successful")
-                DispatchQueue.main.async {
-                    completion(true)
-                }
-            } catch {
-                print("[AudioSegmentUploader] ❌ Conversion failed: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion(false)
+            guard let inputFile = try? AVAudioFile(forReading: inputURL) else {
+                print("[AudioSegmentUploader] ❌ Failed to open input file")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            
+            // MP3 settings (128 kbps, 44.1 kHz, stereo)
+            let outputSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatMPEGLayer3,
+                AVSampleRateKey: 44100.0,
+                AVNumberOfChannelsKey: 2,
+                AVEncoderBitRateKey: 128000
+            ]
+            
+            guard let outputFile = try? AVAudioFile(forWriting: outputURL, settings: outputSettings) else {
+                print("[AudioSegmentUploader] ❌ Failed to create output file")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            
+            // Convert format
+            guard let converter = AVAudioConverter(from: inputFile.processingFormat, to: outputFile.processingFormat) else {
+                print("[AudioSegmentUploader] ❌ Failed to create converter")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            
+            let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFile.processingFormat, frameCapacity: 4096)!
+            
+            while inputFile.framePosition < inputFile.length {
+                do {
+                    try inputFile.read(into: inputBuffer)
+                    
+                    let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFile.processingFormat, frameCapacity: 4096)!
+                    
+                    var error: NSError?
+                    let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+                        outStatus.pointee = .haveData
+                        return inputBuffer
+                    }
+                    
+                    if status == .error {
+                        print("[AudioSegmentUploader] ❌ Conversion error: \(error?.localizedDescription ?? "unknown")")
+                        DispatchQueue.main.async { completion(false) }
+                        return
+                    }
+                    
+                    try outputFile.write(from: outputBuffer)
+                    
+                } catch {
+                    print("[AudioSegmentUploader] ❌ Read/write error: \(error.localizedDescription)")
+                    DispatchQueue.main.async { completion(false) }
+                    return
                 }
             }
+            
+            print("[AudioSegmentUploader] ✅ Conversion successful")
+            DispatchQueue.main.async { completion(true) }
         }
     }
     
