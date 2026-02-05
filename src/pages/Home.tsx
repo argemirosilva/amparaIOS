@@ -188,6 +188,31 @@ export function HomePage({ onLogout }: HomePageProps) {
           console.error('[Home] Error updating native metrics:', error);
         }
       }
+      
+      // Debug events
+      if (event.event === 'debugStartCalled') {
+        toast({
+          title: '🔴 DEBUG: start() chamado!',
+          description: 'O método start() foi executado no iOS',
+          duration: 5000,
+        });
+      }
+      
+      if (event.event === 'debugPermissionGranted') {
+        toast({
+          title: '🟢 DEBUG: Permissão OK',
+          description: 'Microfone autorizado',
+          duration: 5000,
+        });
+      }
+      
+      if (event.event === 'debugMonitoringStarted') {
+        toast({
+          title: '✅ DEBUG: Monitoramento iniciado!',
+          description: 'startMonitoring() executado com sucesso',
+          duration: 5000,
+        });
+      }
     };
     
     hybridAudioTrigger.addListener(handleNativeEvent);

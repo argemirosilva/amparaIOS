@@ -96,6 +96,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         print("🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
         print("\n\n\n\n\n")
         
+        // Send notification to JavaScript to show alert
+        self.notifyListeners("debugStartCalled", data: ["message": "start() foi chamado!"])
+        
         // Enable battery monitoring
         UIDevice.current.isBatteryMonitoringEnabled = true
         
@@ -124,10 +127,17 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 print("[AudioTriggerNative-iOS] OK Microphone permission granted for monitoring")
                 
                 DispatchQueue.main.async {
+                    // Send notification that permission was granted
+                    self.notifyListeners("debugPermissionGranted", data: ["message": "Permissão concedida!"])
+                    
                     // Start audio engine for monitoring (calibration + detection)
                     // but DO NOT start recording
                     do {
                         try self.startMonitoring()
+                        
+                        // Send notification that monitoring started
+                        self.notifyListeners("debugMonitoringStarted", data: ["message": "Monitoramento iniciado!"])
+                        
                         call.resolve(["success": true])
                     } catch {
                         print("[AudioTriggerNative-iOS] ❌ Failed to start monitoring: \(error)")
