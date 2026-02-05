@@ -37,14 +37,30 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var emailUsuario: String?
     private var origemGravacao: String = "monitoramento_automatico"
     
-    // Amplitude analysis
-    private var amplitudeBuffer: [Float] = []
-    private let amplitudeBufferSize = 100 // 1 second at 100 samples/sec
-    private var baselineAmplitude: Float = 0.0
-    private var currentAmplitude: Float = 0.0 // Current RMS amplitude
-    private var calibrationSamples: [Float] = []
+    // Audio analysis (Android-compatible)
+    private var noiseFloor: Double = -40.0 // dB, updated during calibration
+    private var currentRmsDb: Double = -100.0 // Current RMS in dB
+    private var calibrationSamples: [Double] = []
     private let calibrationDuration = 30 // 30 seconds
     private var calibrationStartTime: Date?
+    
+    // Frame aggregation (40 frames = 1 second)
+    private var frameBuffer: [(rmsDb: Double, zcr: Double)] = []
+    private let framesPerSecond = 40 // 25ms per frame
+    private var speechCount = 0
+    private var loudCount = 0
+    
+    // Discussion detection (10-second sliding window)
+    private var secondsWindow: [(isSpeech: Bool, isLoud: Bool)] = []
+    private let windowSize = 10 // 10 seconds
+    
+    // Thresholds (Android defaults)
+    private let vadDeltaDb: Double = 7.0  // Speech threshold above noise floor
+    private let loudDeltaDb: Double = 18.0 // Loud threshold above noise floor
+    private let zcrMinVoice: Double = 0.02
+    private let zcrMaxVoice: Double = 0.35
+    private let speechDensityMin: Double = 0.50 // 50%
+    private let loudDensityMin: Double = 0.30   // 30%
     
     // Fight detection thresholds
     private let fightThresholdMultiplier: Float = 4.5 // 4.5x baseline
@@ -266,7 +282,20 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getMetrics(_ call: CAPPluginCall) {
         print("[AudioTriggerNative-iOS] 📊 getMetrics() called")
         
-        // Determine state based on fight detection and calibration
+        // Calculate densities from sliding window
+        let speechDensity = Double(secondsWindow.filter { $0.isSpeech }.count) / Double(max(secondsWindow.count, 1))
+        let loudDensity = Double(secondsWindow.filter { $0.isLoud }.count) / Double(max(secondsWindow.count, 1))
+        
+        // Calculate discussion score (0.0 to 1.0) - Android-compatible
+        let speechNorm = min(speechDensity / speechDensityMin, 1.0)
+        let loudNorm = min(loudDensity / loudDensityMin, 1.0)
+        let discussionScore = (speechNorm + loudNorm) / 2.0
+        
+        // Thresholds
+        let vadThreshold = noiseFloor + vadDeltaDb
+        let loudThreshold = max(noiseFloor + loudDeltaDb, -20.0)
+        
+        // Determine state
         var state = "IDLE"
         if !isCalibrated {
             state = "CALIBRATING"
@@ -276,20 +305,18 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             state = "MONITORING"
         }
         
-        // Calculate score (0-1) based on current amplitude vs baseline
-        var score: Float = 0.0
-        if baselineAmplitude > 0 {
-            score = min(currentAmplitude / (baselineAmplitude * fightThresholdMultiplier), 1.0)
-        }
-        
         call.resolve([
             "state": state,
-            "score": score,
-            "amplitude": currentAmplitude,
-            "baseline": baselineAmplitude,
+            "score": discussionScore,
+            "rmsDb": currentRmsDb,
+            "noiseFloor": noiseFloor,
+            "vadThreshold": vadThreshold,
+            "loudThreshold": loudThreshold,
             "isCalibrated": isCalibrated,
-            "isSpeech": currentAmplitude > baselineAmplitude * 1.5,
-            "isLoud": currentAmplitude > baselineAmplitude * fightThresholdMultiplier,
+            "isSpeech": currentRmsDb > vadThreshold,
+            "isLoud": currentRmsDb > loudThreshold,
+            "speechDensity": speechDensity,
+            "loudDensity": loudDensity,
             "timestamp": Int(Date().timeIntervalSince1970 * 1000)
         ])
     }
@@ -561,63 +588,52 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         let channelDataValue = channelData.pointee
-        let channelDataValueArray = stride(from: 0, to: Int(buffer.frameLength), by: buffer.stride).map { channelDataValue[$0] }
+        let samples = stride(from: 0, to: Int(buffer.frameLength), by: buffer.stride).map { channelDataValue[$0] }
         
-        // Calculate RMS amplitude
-        let rms = sqrt(channelDataValueArray.map { $0 * $0 }.reduce(0, +) / Float(buffer.frameLength))
-        let amplitude = rms * 100 // Scale to 0-100
+        // Calculate RMS in dB (Android-compatible)
+        let rmsDb = calculateRMSdB(samples: samples)
+        currentRmsDb = rmsDb
         
-        // Update current amplitude for getMetrics()
-        currentAmplitude = amplitude
-        
-        // Store amplitude for continuous calibration
-        recentAmplitudes.append(amplitude)
-        if recentAmplitudes.count > recentAmplitudesMaxSize {
-            recentAmplitudes.removeFirst()
-        }
+        // Calculate Zero Crossing Rate
+        let zcr = calculateZCR(samples: samples)
         
         // Calibration phase (first 30 seconds)
         if !isCalibrated {
-            calibrationSamples.append(amplitude)
+            calibrationSamples.append(rmsDb)
             
             if let startTime = calibrationStartTime, Date().timeIntervalSince(startTime) >= TimeInterval(calibrationDuration) {
-                // Calculate baseline (average of calibration samples)
-                baselineAmplitude = calibrationSamples.reduce(0, +) / Float(calibrationSamples.count)
+                // Calculate noise floor (average of calibration samples)
+                noiseFloor = calibrationSamples.reduce(0, +) / Double(calibrationSamples.count)
                 isCalibrated = true
-                lastCalibrationUpdate = Date()
                 
-                print("[AudioTriggerNative-iOS] 🎯 Initial calibration complete, baseline: \(baselineAmplitude)")
+                print("[AudioTriggerNative-iOS] 🎯 Initial calibration complete, noiseFloor: \(noiseFloor) dB")
                 
                 // Notify JS
-                notifyEvent("calibrationStatus", data: ["isCalibrated": true, "baseline": baselineAmplitude])
+                notifyEvent("calibrationStatus", data: ["isCalibrated": true, "noiseFloor": noiseFloor])
             }
             return
         }
         
-        // Continuous calibration (every 5 minutes)
-        if continuousCalibrationEnabled {
-            if let lastUpdate = lastCalibrationUpdate, Date().timeIntervalSince(lastUpdate) >= calibrationUpdateInterval {
-                if recentAmplitudes.count >= 60 { // At least 1 minute of data
-                    let newBaseline = recentAmplitudes.reduce(0, +) / Float(recentAmplitudes.count)
-                    let oldBaseline = baselineAmplitude
-                    baselineAmplitude = newBaseline
-                    lastCalibrationUpdate = Date()
-                    
-                    print("[AudioTriggerNative-iOS] 🔄 Continuous calibration: baseline updated from \(oldBaseline) to \(newBaseline)")
-                    
-                    // Notify JS
-                    notifyEvent("calibrationStatus", data: ["isCalibrated": true, "baseline": baselineAmplitude, "continuous": true])
-                }
-            }
-        }
+        // Add frame to buffer (aggregation)
+        frameBuffer.append((rmsDb: rmsDb, zcr: zcr))
         
-        // Fight detection (after calibration, only within monitoring period)
-        detectFight(amplitude: amplitude)
+        // Check if frame is speech or loud
+        let isSpeech = isSpeechLike(rmsDb: rmsDb, zcr: zcr)
+        let isLoud = isLoudFrame(rmsDb: rmsDb)
+        
+        if isSpeech { speechCount += 1 }
+        if isLoud { loudCount += 1 }
+        
+        // Process aggregated second (40 frames)
+        if frameBuffer.count >= framesPerSecond {
+            processAggregatedSecond()
+            frameBuffer.removeAll()
+            speechCount = 0
+            loudCount = 0
+        }
     }
     
-    private func detectFight(amplitude: Float) {
-        let threshold = baselineAmplitude * fightThresholdMultiplier
-        
+    private func detectFight(score: Double) {
         // Check if within monitoring period
         let withinPeriod = isWithinMonitoringPeriod()
         if !withinPeriod {
@@ -636,27 +652,25 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        if amplitude > threshold {
-            // High amplitude detected
+        // High score indicates discussion
+        if score > 0.7 { // Threshold for fight detection
             if fightDetectedTime == nil {
                 fightDetectedTime = Date()
-                // Removed log to reduce volume: High amplitude detected
             } else if let detectedTime = fightDetectedTime, Date().timeIntervalSince(detectedTime) >= fightDurationThreshold {
-                // Fight confirmed (high amplitude for 10+ seconds)
+                // Fight confirmed (high score for 10+ seconds)
                 if !isFightDetected {
                     isFightDetected = true
-                    print("[AudioTriggerNative-iOS] 🚨 FIGHT DETECTED!")
+                    print("[AudioTriggerNative-iOS] 🚨 FIGHT DETECTED! score=\(score)")
                     
                     // Notify JS
                     notifyEvent("fightDetected", data: [
-                        "amplitude": amplitude,
-                        "threshold": threshold,
+                        "score": score,
                         "timestamp": Int(Date().timeIntervalSince1970 * 1000)
                     ])
                 }
             }
         } else {
-            // Normal amplitude
+            // Normal score
             if isFightDetected {
                 print("[AudioTriggerNative-iOS] OK Fight ended")
                 isFightDetected = false
@@ -906,18 +920,23 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func sendMetricsUpdate() {
-        let threshold = baselineAmplitude * fightThresholdMultiplier
+        // Calculate densities from sliding window
+        let speechDensity = Double(secondsWindow.filter { $0.isSpeech }.count) / Double(max(secondsWindow.count, 1))
+        let loudDensity = Double(secondsWindow.filter { $0.isLoud }.count) / Double(max(secondsWindow.count, 1))
         
-        // Calculate score (0-1)
-        var score: Float = 0.0
-        if baselineAmplitude > 0 {
-            score = min(currentAmplitude / threshold, 1.0)
-        }
+        // Calculate discussion score (0.0 to 1.0) - Android-compatible
+        let speechNorm = min(speechDensity / speechDensityMin, 1.0)
+        let loudNorm = min(loudDensity / loudDensityMin, 1.0)
+        let discussionScore = (speechNorm + loudNorm) / 2.0
+        
+        // Thresholds for isSpeech and isLoud
+        let vadThreshold = noiseFloor + vadDeltaDb
+        let loudThreshold = max(noiseFloor + loudDeltaDb, -20.0)
         
         // DEBUG: Log metrics being sent (every 5 seconds to avoid spam)
         let now = Date().timeIntervalSince1970
         if Int(now) % 5 == 0 {
-            print("[AudioTriggerNative-iOS] 📊 Metrics: amplitude=\(currentAmplitude), baseline=\(baselineAmplitude), threshold=\(threshold), score=\(score), calibrated=\(isCalibrated)")
+            print("[AudioTriggerNative-iOS] 📊 Metrics: rmsDb=\(currentRmsDb), noiseFloor=\(noiseFloor), score=\(discussionScore), speechDensity=\(speechDensity), loudDensity=\(loudDensity)")
         }
         
         // Determine state
@@ -932,13 +951,15 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Send metrics event to JavaScript
         notifyEvent("audioMetrics", data: [
-            "score": score,
-            "rmsDb": currentAmplitude,
-            "amplitude": currentAmplitude,
-            "baseline": baselineAmplitude,
-            "threshold": threshold,
-            "isSpeech": currentAmplitude > baselineAmplitude * 1.5,
-            "isLoud": currentAmplitude > threshold,
+            "score": discussionScore, // 0.0 to 1.0 (UI multiplies by 7)
+            "rmsDb": currentRmsDb,
+            "noiseFloor": noiseFloor,
+            "vadThreshold": vadThreshold,
+            "loudThreshold": loudThreshold,
+            "isSpeech": currentRmsDb > vadThreshold,
+            "isLoud": currentRmsDb > loudThreshold,
+            "speechDensity": speechDensity,
+            "loudDensity": loudDensity,
             "isCalibrated": isCalibrated,
             "state": state,
             "timestamp": Int(Date().timeIntervalSince1970 * 1000)
