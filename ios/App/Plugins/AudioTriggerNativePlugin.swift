@@ -69,6 +69,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var isFightDetected = false
     private var lastFightEndTime: Date? // Cooldown tracking
     
+    // Auto-recording on fight detection
+    private var autoRecordingActive = false
+    private var postFightTimer: Timer? // 5-minute timer after fight ends
+    private let postFightDuration: TimeInterval = 300.0 // 5 minutes
+    
     // Monitoring periods
     private var monitoringPeriods: [[String: String]] = []
     
@@ -241,6 +246,13 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         print("[AudioTriggerNative-iOS] ✅ Stopping recording (origem: \(origemGravacao))")
+        
+        // Cancel post-fight timer if stopping auto-recording manually
+        if autoRecordingActive {
+            cancelPostFightTimer()
+            autoRecordingActive = false
+        }
+        
         stopRecordingInternal()
         call.resolve(["success": true, "wasRecording": true])
     }
@@ -729,6 +741,18 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                     isFightDetected = true
                     print("[AudioTriggerNative-iOS] 🚨 FIGHT DETECTED! score=\(score)")
                     
+                    // Start auto-recording if not already recording
+                    if !isRecording && sessionToken != nil && emailUsuario != nil {
+                        do {
+                            origemGravacao = "deteccao_automatica"
+                            try startRecording()
+                            autoRecordingActive = true
+                            print("[AudioTriggerNative-iOS] 🎥 Auto-recording started (fight detected)")
+                        } catch {
+                            print("[AudioTriggerNative-iOS] ❌ Failed to start auto-recording: \(error)")
+                        }
+                    }
+                    
                     // Notify JS
                     notifyEvent("fightDetected", data: [
                         "score": score,
@@ -743,11 +767,54 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 isFightDetected = false
                 lastFightEndTime = Date() // Start cooldown
                 
+                // Start 5-minute post-fight timer if auto-recording is active
+                if autoRecordingActive {
+                    startPostFightTimer()
+                }
+                
                 // Notify JS
                 notifyEvent("fightEnded", data: [:])
             }
             fightDetectedTime = nil
         }
+    }
+    
+    // MARK: - Post-Fight Timer
+    
+    private func startPostFightTimer() {
+        // Cancel existing timer if any
+        postFightTimer?.invalidate()
+        
+        print("[AudioTriggerNative-iOS] ⏱️ Starting 5-minute post-fight timer")
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.postFightTimer = Timer.scheduledTimer(withTimeInterval: self.postFightDuration, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                
+                print("[AudioTriggerNative-iOS] ⏰ Post-fight timer expired - stopping auto-recording")
+                
+                if self.autoRecordingActive && self.isRecording {
+                    self.stopRecordingInternal()
+                    self.autoRecordingActive = false
+                    
+                    // Restart monitoring
+                    do {
+                        try self.startMonitoring()
+                        print("[AudioTriggerNative-iOS] ✅ Monitoring restarted after auto-recording")
+                    } catch {
+                        print("[AudioTriggerNative-iOS] ❌ Failed to restart monitoring: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func cancelPostFightTimer() {
+        postFightTimer?.invalidate()
+        postFightTimer = nil
+        print("[AudioTriggerNative-iOS] ❌ Post-fight timer cancelled")
     }
     
     // MARK: - Segment Upload
