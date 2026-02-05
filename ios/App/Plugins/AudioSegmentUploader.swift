@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import ffmpegkit
 
 /**
  * AudioSegmentUploader - Handles audio segment recording and upload
@@ -75,20 +76,33 @@ class AudioSegmentUploader {
         
         print("[AudioSegmentUploader] 📤 Uploading segment \(segmentIndex), duration: \(Int(duration))s")
         
-        // Upload to server
-        uploadSegment(fileURL: url, segmentIndex: segmentIndex, duration: Int(duration)) { [weak self] success in
+        // Convert M4A to OGG before upload
+        let oggURL = url.deletingPathExtension().appendingPathExtension("ogg")
+        convertM4AtoOGG(inputURL: url, outputURL: oggURL) { [weak self] convertSuccess in
             guard let self = self else { return }
             
-            if success {
-                // Delete local file after successful upload
-                try? FileManager.default.removeItem(at: url)
-                print("[AudioSegmentUploader] ✅ Segment \(self.segmentIndex) uploaded and deleted")
-            } else {
-                print("[AudioSegmentUploader] ❌ Failed to upload segment \(self.segmentIndex)")
+            if !convertSuccess {
+                print("[AudioSegmentUploader] ❌ Failed to convert segment \(self.segmentIndex) to OGG")
+                completion(false)
+                return
             }
             
-            self.segmentIndex += 1
-            completion(success)
+            print("[AudioSegmentUploader] ✅ Converted segment \(self.segmentIndex) to OGG")
+            
+            // Upload OGG file to server
+            self.uploadSegment(fileURL: oggURL, segmentIndex: self.segmentIndex, duration: Int(duration)) { success in
+                if success {
+                    // Delete both M4A and OGG files after successful upload
+                    try? FileManager.default.removeItem(at: url)
+                    try? FileManager.default.removeItem(at: oggURL)
+                    print("[AudioSegmentUploader] ✅ Segment \(self.segmentIndex) uploaded and deleted")
+                } else {
+                    print("[AudioSegmentUploader] ❌ Failed to upload segment \(self.segmentIndex)")
+                }
+                
+                self.segmentIndex += 1
+                completion(success)
+            }
         }
     }
     
@@ -166,8 +180,10 @@ class AudioSegmentUploader {
         
         // Add audio file
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"segment_\(segmentIndex).m4a\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/mp4\r\n\r\n".data(using: .utf8)!)
+        let fileName = fileURL.lastPathComponent
+        let mimeType = fileName.hasSuffix(".ogg") ? "audio/ogg" : "audio/mp4"
+        body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(audioData)
         body.append("\r\n".data(using: .utf8)!)
         
@@ -204,6 +220,43 @@ class AudioSegmentUploader {
                 completion(false)
             }
         }.resume()
+    }
+    
+    // MARK: - Conversion
+    
+    private func convertM4AtoOGG(inputURL: URL, outputURL: URL, completion: @escaping (Bool) -> Void) {
+        // Delete output file if exists
+        try? FileManager.default.removeItem(at: outputURL)
+        
+        // Build FFmpeg command
+        // -i input.m4a: input file
+        // -c:a libvorbis: use Vorbis codec for OGG
+        // -q:a 4: quality level (0-10, 4 is good balance)
+        let command = "-i \"\(inputURL.path)\" -c:a libvorbis -q:a 4 \"\(outputURL.path)\""
+        
+        print("[AudioSegmentUploader] 🔄 Converting M4A to OGG: \(command)")
+        
+        // Execute FFmpeg command
+        FFmpegKit.executeAsync(command) { session in
+            guard let session = session else {
+                print("[AudioSegmentUploader] ❌ FFmpeg session is nil")
+                completion(false)
+                return
+            }
+            
+            let returnCode = session.getReturnCode()
+            
+            if ReturnCode.isSuccess(returnCode) {
+                print("[AudioSegmentUploader] ✅ FFmpeg conversion successful")
+                completion(true)
+            } else {
+                print("[AudioSegmentUploader] ❌ FFmpeg conversion failed with code: \(String(describing: returnCode))")
+                if let output = session.getOutput() {
+                    print("[AudioSegmentUploader] FFmpeg output: \(output)")
+                }
+                completion(false)
+            }
+        }
     }
     
     // MARK: - Cleanup
