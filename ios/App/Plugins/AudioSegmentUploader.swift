@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreLocation
 
 /**
  * AudioSegmentUploader - Handles audio segment recording and upload
@@ -27,6 +28,10 @@ class AudioSegmentUploader {
     private let segmentDuration: TimeInterval = 30.0
     private var segmentStartTime: Date?
     
+    // Location manager for GPS
+    private var locationManager: CLLocationManager?
+    private var currentLocation: CLLocation?
+    
     // MARK: - Initialization
     
     init(sessionId: String, sessionToken: String, emailUsuario: String, origemGravacao: String) {
@@ -34,6 +39,21 @@ class AudioSegmentUploader {
         self.sessionToken = sessionToken
         self.emailUsuario = emailUsuario
         self.origemGravacao = origemGravacao
+        
+        // Setup location manager
+        setupLocationManager()
+    }
+    
+    private func setupLocationManager() {
+        locationManager = CLLocationManager()
+        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager?.distanceFilter = 10 // Update every 10 meters
+        locationManager?.delegate = self
+        
+        // Start monitoring location
+        if CLLocationManager.locationServicesEnabled() {
+            locationManager?.startUpdatingLocation()
+        }
     }
     
     // MARK: - Recording
@@ -213,6 +233,28 @@ class AudioSegmentUploader {
         body.append("Content-Disposition: form-data; name=\"timezone_offset_minutes\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(timezoneOffset)\r\n".data(using: .utf8)!)
         
+        // Add GPS location if available
+        if let location = currentLocation {
+            // Add latitude
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"latitude\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(location.coordinate.latitude)\r\n".data(using: .utf8)!)
+            
+            // Add longitude
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"longitude\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(location.coordinate.longitude)\r\n".data(using: .utf8)!)
+            
+            // Add accuracy (precisao_metros)
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"precisao_metros\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(Int(location.horizontalAccuracy))\r\n".data(using: .utf8)!)
+            
+            print("[AudioSegmentUploader] 📍 Including GPS in upload: lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude), accuracy=\(Int(location.horizontalAccuracy))m")
+        } else {
+            print("[AudioSegmentUploader] ⚠️ No GPS location available for this segment")
+        }
+        
         // Add audio file
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         let fileName = fileURL.lastPathComponent
@@ -319,5 +361,24 @@ class AudioSegmentUploader {
             try? FileManager.default.removeItem(at: url)
         }
         audioFileURL = nil
+        
+        // Stop location updates
+        locationManager?.stopUpdatingLocation()
+        locationManager = nil
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+
+extension AudioSegmentUploader: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let location = locations.last {
+            currentLocation = location
+            print("[AudioSegmentUploader] 📍 GPS updated: lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude), accuracy=\(location.horizontalAccuracy)m")
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("[AudioSegmentUploader] ⚠️ GPS error: \(error.localizedDescription)")
     }
 }

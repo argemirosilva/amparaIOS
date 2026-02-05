@@ -1564,6 +1564,18 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 if httpResponse.statusCode == 200 {
                     self.lastPingTime = Date()
                     print("[AudioTriggerNative-iOS] 🏓 Ping sent successfully (recording: \(self.isRecording), monitoring: \(!self.isRecording))")
+                } else if httpResponse.statusCode == 401 {
+                    // Token expired - notify JavaScript to handle re-login
+                    print("[AudioTriggerNative-iOS] 🔒 Token expired (401) - notifying JavaScript")
+                    
+                    // Stop ping timer (no point in continuing)
+                    self.stopPingTimer()
+                    
+                    // Notify JavaScript that session expired
+                    self.notifyEvent("sessionExpired", data: [
+                        "reason": "token_expired",
+                        "message": "Session token expired, please login again"
+                    ])
                 } else {
                     print("[AudioTriggerNative-iOS] ⚠️ Ping returned status \(httpResponse.statusCode)")
                 }
