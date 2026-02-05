@@ -648,8 +648,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: - Segment Upload
     
     private func startSegmentTimer() {
-        segmentTimer = Timer.scheduledTimer(withTimeInterval: segmentDuration, repeats: true) { [weak self] _ in
-            self?.uploadSegment()
+        // MUST run on main thread for Timer to work
+        DispatchQueue.main.async { [weak self] in
+            self?.segmentTimer = Timer.scheduledTimer(withTimeInterval: self?.segmentDuration ?? 30.0, repeats: true) { [weak self] _ in
+                self?.uploadSegment()
+            }
         }
     }
     

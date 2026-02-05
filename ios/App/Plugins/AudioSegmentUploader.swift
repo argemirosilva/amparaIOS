@@ -182,14 +182,14 @@ class AudioSegmentUploader {
         body.append("Content-Disposition: form-data; name=\"email_usuario\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(emailUsuario)\r\n".data(using: .utf8)!)
         
-        // Add segment_index field
+        // Add segmento_idx field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"segment_index\"\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"segmento_idx\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(segmentIndex)\r\n".data(using: .utf8)!)
         
-        // Add duration_seconds field (SEM casas decimais)
+        // Add duracao_segundos field (SEM casas decimais)
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"duration_seconds\"\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"duracao_segundos\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(Int(duration))\r\n".data(using: .utf8)!)
         
         // Add origem_gravacao field
@@ -197,10 +197,21 @@ class AudioSegmentUploader {
         body.append("Content-Disposition: form-data; name=\"origem_gravacao\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(origemGravacao)\r\n".data(using: .utf8)!)
         
+        // Add device_id field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"device_id\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(sessionId)\r\n".data(using: .utf8)!)
+        
         // Add timezone field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"timezone\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(timezone)\r\n".data(using: .utf8)!)
+        
+        // Add timezone_offset_minutes field
+        let timezoneOffset = TimeZone.current.secondsFromGMT() / 60
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"timezone_offset_minutes\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(timezoneOffset)\r\n".data(using: .utf8)!)
         
         // Add audio file
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
