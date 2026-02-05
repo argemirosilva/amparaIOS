@@ -235,6 +235,8 @@ class AudioSegmentUploader {
             converter.outputFile = outputURL.path
             converter.outputFileType = kAudioFileMP3Type
             converter.outputFormatID = kAudioFormatMPEGLayer3
+            converter.outputSampleRate = 8000  // 8 kHz (telefone)
+            converter.outputNumberChannels = 1  // Mono
             
             let success = converter.convert()
             
