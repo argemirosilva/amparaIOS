@@ -232,7 +232,14 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         print("[AudioTriggerNative-iOS] 🔧 updateConfig() called")
         
         // Update monitoring periods if provided
-        if let periods = call.getArray("monitoringPeriods", [[String: String]].self) {
+        if let periodsArray = call.getArray("monitoringPeriods") {
+            // Convert JSArray to [[String: String]]
+            var periods: [[String: String]] = []
+            for item in periodsArray {
+                if let dict = item as? [String: String] {
+                    periods.append(dict)
+                }
+            }
             monitoringPeriods = periods
             print("[AudioTriggerNative-iOS] 📅 Updated monitoring periods: \(periods.count) periods")
             for (index, period) in periods.enumerated() {
