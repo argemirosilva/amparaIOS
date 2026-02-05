@@ -82,6 +82,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var metricsTimer: Timer?
     private let metricsUpdateInterval: TimeInterval = 0.5 // 500ms (2x per second)
     
+    // Audio interruption handling
+    private var wasRecordingBeforeInterruption = false
+    private var wasMonitoringBeforeInterruption = false
+    
     // MARK: - Capacitor Methods
     
     @objc func start(_ call: CAPPluginCall) {
@@ -93,6 +97,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Enable battery monitoring
         UIDevice.current.isBatteryMonitoringEnabled = true
+        
+        // Setup audio interruption observers
+        setupAudioInterruptionObservers()
         
         // iOS: start() apenas inicia MONITORAMENTO (calibração + detecção)
         // NÃO inicia gravação automaticamente
@@ -135,6 +142,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     
     @objc func stop(_ call: CAPPluginCall) {
         print("[AudioTriggerNative-iOS] 🛑 stop() called (stop monitoring)")
+        
+        // Remove audio interruption observers
+        removeAudioInterruptionObservers()
         
         // Stop monitoring (calibration + detection)
         stopMonitoring()
@@ -841,6 +851,149 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             "state": state,
             "timestamp": Int(Date().timeIntervalSince1970 * 1000)
         ])
+    }
+    
+    // MARK: - Audio Interruption Handling
+    
+    private func setupAudioInterruptionObservers() {
+        // Observe audio session interruptions (calls, other apps)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        
+        // Observe route changes (headphones, bluetooth)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        
+        print("[AudioTriggerNative-iOS] 🔔 Audio interruption observers setup")
+    }
+    
+    private func removeAudioInterruptionObservers() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        
+        print("[AudioTriggerNative-iOS] 🔕 Audio interruption observers removed")
+    }
+    
+    @objc private func handleAudioInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        
+        switch type {
+        case .began:
+            // Interruption began (call, WhatsApp, etc.)
+            print("[AudioTriggerNative-iOS] ☎️ Audio interruption began (call/WhatsApp/etc)")
+            
+            // Save current state
+            wasRecordingBeforeInterruption = isRecording
+            wasMonitoringBeforeInterruption = (audioEngine != nil)
+            
+            // Stop recording if active
+            if isRecording {
+                print("[AudioTriggerNative-iOS] ⏸️ Pausing recording due to interruption")
+                stopRecordingInternal()
+                
+                // Notify JS
+                notifyEvent("audioInterrupted", data: [
+                    "reason": "mic_solicitado",
+                    "wasRecording": true
+                ])
+            }
+            
+            // Stop monitoring if active
+            if wasMonitoringBeforeInterruption {
+                print("[AudioTriggerNative-iOS] ⏸️ Pausing monitoring due to interruption")
+                stopMonitoring()
+            }
+            
+        case .ended:
+            // Interruption ended
+            print("[AudioTriggerNative-iOS] ✅ Audio interruption ended")
+            
+            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
+                return
+            }
+            
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            
+            if options.contains(.shouldResume) {
+                print("[AudioTriggerNative-iOS] 🔄 Resuming after interruption")
+                
+                // Resume monitoring if it was active
+                if wasMonitoringBeforeInterruption {
+                    do {
+                        try startMonitoring()
+                        print("[AudioTriggerNative-iOS] ✅ Monitoring resumed")
+                    } catch {
+                        print("[AudioTriggerNative-iOS] ❌ Failed to resume monitoring: \(error)")
+                    }
+                }
+                
+                // Resume recording if it was active
+                if wasRecordingBeforeInterruption {
+                    do {
+                        try startRecording()
+                        print("[AudioTriggerNative-iOS] ✅ Recording resumed")
+                        
+                        // Notify JS
+                        notifyEvent("audioResumed", data: [:])
+                    } catch {
+                        print("[AudioTriggerNative-iOS] ❌ Failed to resume recording: \(error)")
+                    }
+                }
+            } else {
+                print("[AudioTriggerNative-iOS] ⚠️ Interruption ended but should NOT resume")
+            }
+            
+            // Reset flags
+            wasRecordingBeforeInterruption = false
+            wasMonitoringBeforeInterruption = false
+            
+        @unknown default:
+            break
+        }
+    }
+    
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+        
+        switch reason {
+        case .oldDeviceUnavailable:
+            // Headphones/Bluetooth disconnected
+            print("[AudioTriggerNative-iOS] 🎧 Audio device disconnected")
+            // Continue using built-in microphone
+            
+        case .newDeviceAvailable:
+            // Headphones/Bluetooth connected
+            print("[AudioTriggerNative-iOS] 🎧 New audio device connected")
+            // iOS will automatically switch to new device
+            
+        default:
+            break
+        }
     }
     
     // MARK: - Event Notification
