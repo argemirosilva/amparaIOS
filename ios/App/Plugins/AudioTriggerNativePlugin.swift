@@ -47,11 +47,21 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var calibrationStartTime: Date?
     
     // Fight detection thresholds
-    private let fightThresholdMultiplier: Float = 4.5 // 4.5x baseline (mais conservador)
-    private let fightDurationThreshold: TimeInterval = 3.0 // 3 seconds (evita falsos positivos)
+    private let fightThresholdMultiplier: Float = 4.5 // 4.5x baseline
+    private let fightDurationThreshold: TimeInterval = 10.0 // 10 seconds minimum
     private var fightDetectedTime: Date?
     private var isFightDetected = false
     private var lastFightEndTime: Date? // Cooldown tracking
+    
+    // Monitoring periods
+    private var monitoringPeriods: [[String: String]] = []
+    
+    // Continuous calibration
+    private var continuousCalibrationEnabled = true
+    private var lastCalibrationUpdate: Date?
+    private let calibrationUpdateInterval: TimeInterval = 300.0 // 5 minutes
+    private var recentAmplitudes: [Float] = []
+    private let recentAmplitudesMaxSize = 300 // 5 minutes at 1 sample/sec
     
     // Recording state
     private var recordingStartTime: Date?
@@ -207,7 +217,17 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func updateConfig(_ call: CAPPluginCall) {
         print("[AudioTriggerNative-iOS] 🔧 updateConfig() called")
         
-        // iOS doesn't need config updates (uses fixed thresholds)
+        // Update monitoring periods if provided
+        if let periods = call.getArray("monitoringPeriods", [[String: String]].self) {
+            monitoringPeriods = periods
+            print("[AudioTriggerNative-iOS] 📅 Updated monitoring periods: \(periods.count) periods")
+            for (index, period) in periods.enumerated() {
+                if let inicio = period["inicio"], let fim = period["fim"] {
+                    print("[AudioTriggerNative-iOS] 📅   Period \(index): \(inicio) - \(fim)")
+                }
+            }
+        }
+        
         call.resolve(["success": true])
     }
     
@@ -240,6 +260,46 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             "isLoud": currentAmplitude > baselineAmplitude * fightThresholdMultiplier,
             "timestamp": Int(Date().timeIntervalSince1970 * 1000)
         ])
+    }
+    
+    // MARK: - Monitoring Period Check
+    
+    private func isWithinMonitoringPeriod() -> Bool {
+        // If no periods configured, always allow monitoring
+        guard !monitoringPeriods.isEmpty else {
+            return true
+        }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        let currentHour = calendar.component(.hour, from: now)
+        let currentMinute = calendar.component(.minute, from: now)
+        let currentMinutes = currentHour * 60 + currentMinute
+        
+        // Check if within any period
+        for period in monitoringPeriods {
+            guard let inicioStr = period["inicio"],
+                  let fimStr = period["fim"] else {
+                continue
+            }
+            
+            // Parse "HH:MM" format
+            let inicioComponents = inicioStr.split(separator: ":").compactMap { Int($0) }
+            let fimComponents = fimStr.split(separator: ":").compactMap { Int($0) }
+            
+            guard inicioComponents.count == 2, fimComponents.count == 2 else {
+                continue
+            }
+            
+            let startMinutes = inicioComponents[0] * 60 + inicioComponents[1]
+            let endMinutes = fimComponents[0] * 60 + fimComponents[1]
+            
+            if currentMinutes >= startMinutes && currentMinutes < endMinutes {
+                return true
+            }
+        }
+        
+        return false
     }
     
     // MARK: - Monitoring Methods
@@ -452,6 +512,12 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         // Update current amplitude for getMetrics()
         currentAmplitude = amplitude
         
+        // Store amplitude for continuous calibration
+        recentAmplitudes.append(amplitude)
+        if recentAmplitudes.count > recentAmplitudesMaxSize {
+            recentAmplitudes.removeFirst()
+        }
+        
         // Calibration phase (first 30 seconds)
         if !isCalibrated {
             calibrationSamples.append(amplitude)
@@ -460,8 +526,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 // Calculate baseline (average of calibration samples)
                 baselineAmplitude = calibrationSamples.reduce(0, +) / Float(calibrationSamples.count)
                 isCalibrated = true
+                lastCalibrationUpdate = Date()
                 
-                print("[AudioTriggerNative-iOS] 🎯 Calibration complete, baseline: \(baselineAmplitude)")
+                print("[AudioTriggerNative-iOS] 🎯 Initial calibration complete, baseline: \(baselineAmplitude)")
                 
                 // Notify JS
                 notifyEvent("calibrationStatus", data: ["isCalibrated": true, "baseline": baselineAmplitude])
@@ -469,12 +536,41 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // Fight detection (after calibration)
+        // Continuous calibration (every 5 minutes)
+        if continuousCalibrationEnabled {
+            if let lastUpdate = lastCalibrationUpdate, Date().timeIntervalSince(lastUpdate) >= calibrationUpdateInterval {
+                if recentAmplitudes.count >= 60 { // At least 1 minute of data
+                    let newBaseline = recentAmplitudes.reduce(0, +) / Float(recentAmplitudes.count)
+                    let oldBaseline = baselineAmplitude
+                    baselineAmplitude = newBaseline
+                    lastCalibrationUpdate = Date()
+                    
+                    print("[AudioTriggerNative-iOS] 🔄 Continuous calibration: baseline updated from \(oldBaseline) to \(newBaseline)")
+                    
+                    // Notify JS
+                    notifyEvent("calibrationStatus", data: ["isCalibrated": true, "baseline": baselineAmplitude, "continuous": true])
+                }
+            }
+        }
+        
+        // Fight detection (after calibration, only within monitoring period)
         detectFight(amplitude: amplitude)
     }
     
     private func detectFight(amplitude: Float) {
         let threshold = baselineAmplitude * fightThresholdMultiplier
+        
+        // Check if within monitoring period
+        let withinPeriod = isWithinMonitoringPeriod()
+        if !withinPeriod {
+            // Outside monitoring period - reset detection state but keep monitoring
+            if isFightDetected {
+                print("[AudioTriggerNative-iOS] ⏸️ Fight detection paused (outside monitoring period)")
+                isFightDetected = false
+            }
+            fightDetectedTime = nil
+            return
+        }
         
         // Check cooldown period (20 seconds after last fight)
         if let lastEnd = lastFightEndTime, Date().timeIntervalSince(lastEnd) < 20.0 {
@@ -488,7 +584,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 fightDetectedTime = Date()
                 print("[AudioTriggerNative-iOS] ⚠️ High amplitude detected: \(amplitude) > \(threshold)")
             } else if let detectedTime = fightDetectedTime, Date().timeIntervalSince(detectedTime) >= fightDurationThreshold {
-                // Fight confirmed (high amplitude for 3+ seconds)
+                // Fight confirmed (high amplitude for 10+ seconds)
                 if !isFightDetected {
                     isFightDetected = true
                     print("[AudioTriggerNative-iOS] 🚨 FIGHT DETECTED!")
