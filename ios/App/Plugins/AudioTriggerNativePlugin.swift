@@ -762,6 +762,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             let loudNorm = min(loudDensity / loudDensityMin, 1.0)
             discussionScore = (speechNorm + loudNorm) / 2.0
             
+            // DEBUG: Log detection thresholds (every 5 seconds)
+            if Int(Date().timeIntervalSince1970) % 5 == 0 {
+                print("[AudioTriggerNative-iOS] 📊 Detection: speechD=\(String(format: "%.2f", speechDensity)) (min=\(speechDensityMin)), loudD=\(String(format: "%.2f", loudDensity)) (min=\(loudDensityMin)), score=\(String(format: "%.2f", discussionScore))")
+            }
+            
             // Fight detection (if densities exceed thresholds)
             if speechDensity >= speechDensityMin && loudDensity >= loudDensityMin {
                 detectFight(score: discussionScore)
@@ -787,9 +792,15 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         // Check cooldown period (20 seconds after last fight)
-        if let lastEnd = lastFightEndTime, Date().timeIntervalSince(lastEnd) < 20.0 {
-            // Still in cooldown, don't detect new fights
-            return
+        if let lastEnd = lastFightEndTime {
+            let cooldownRemaining = 20.0 - Date().timeIntervalSince(lastEnd)
+            if cooldownRemaining > 0 {
+                // Still in cooldown, don't detect new fights
+                if Int(Date().timeIntervalSince1970) % 5 == 0 {
+                    print("[AudioTriggerNative-iOS] ⏳ Cooldown active: \(Int(cooldownRemaining))s remaining (score=\(score))")
+                }
+                return
+            }
         }
         
         // High score indicates discussion
