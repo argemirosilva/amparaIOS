@@ -73,31 +73,44 @@ class AudioSegmentUploader: NSObject {
         switch authStatus {
         case .notDetermined:
             print("[AudioSegmentUploader] 🔐 Status: Not Determined - requesting Always authorization")
+            print("[AudioSegmentUploader] 🔐 Will wait for authorization callback before starting GPS")
             locationManager?.requestAlwaysAuthorization()
+            // GPS will be started in didChangeAuthorization callback
+            return
         case .restricted:
-            print("[AudioSegmentUploader] 🔐 Status: Restricted")
+            print("[AudioSegmentUploader] 🔐 Status: Restricted - cannot use GPS")
+            return
         case .denied:
-            print("[AudioSegmentUploader] 🔐 Status: Denied")
+            print("[AudioSegmentUploader] 🔐 Status: Denied - cannot use GPS")
+            return
         case .authorizedAlways:
-            print("[AudioSegmentUploader] 🔐 Status: Authorized Always")
+            print("[AudioSegmentUploader] 🔐 Status: Authorized Always - starting GPS")
         case .authorizedWhenInUse:
-            print("[AudioSegmentUploader] 🔐 Status: Authorized When In Use")
+            print("[AudioSegmentUploader] 🔐 Status: Authorized When In Use - starting GPS")
         @unknown default:
             print("[AudioSegmentUploader] 🔐 Status: Unknown (\(authStatus.rawValue))")
+            return
         }
         
-        // Start monitoring location
-        if servicesEnabled {
-            // Request immediate location first
-            locationManager?.requestLocation()
-            print("[AudioSegmentUploader] 📍 Requesting immediate GPS location")
-            
-            // Then start continuous updates
-            locationManager?.startUpdatingLocation()
-            print("[AudioSegmentUploader] 📍 GPS started with background updates enabled")
-        } else {
+        // Start monitoring location (only if authorized)
+        startGPSUpdates()
+    }
+    
+    private func startGPSUpdates() {
+        guard CLLocationManager.locationServicesEnabled() else {
             print("[AudioSegmentUploader] ❌ Cannot start GPS: location services disabled")
+            return
         }
+        
+        print("[AudioSegmentUploader] 📍 Starting GPS updates...")
+        
+        // Request immediate location first
+        locationManager?.requestLocation()
+        print("[AudioSegmentUploader] 📍 Requesting immediate GPS location")
+        
+        // Then start continuous updates
+        locationManager?.startUpdatingLocation()
+        print("[AudioSegmentUploader] 📍 GPS continuous updates enabled")
     }
     
     // MARK: - Recording
@@ -438,25 +451,17 @@ extension AudioSegmentUploader: CLLocationManagerDelegate {
         print("[AudioSegmentUploader] 🔐 GPS authorization changed: \(status.rawValue)")
         switch status {
         case .notDetermined:
-            print("[AudioSegmentUploader] 🔐 Status: Not Determined")
+            print("[AudioSegmentUploader] 🔐 Status: Not Determined - waiting for user decision")
         case .restricted:
-            print("[AudioSegmentUploader] 🔐 Status: Restricted")
+            print("[AudioSegmentUploader] 🔐 Status: Restricted - GPS unavailable")
         case .denied:
-            print("[AudioSegmentUploader] 🔐 Status: Denied")
+            print("[AudioSegmentUploader] 🔐 Status: Denied - user rejected GPS permission")
         case .authorizedAlways:
-            print("[AudioSegmentUploader] 🔐 Status: Authorized Always")
-            // Restart location updates if authorized
-            if CLLocationManager.locationServicesEnabled() {
-                locationManager?.startUpdatingLocation()
-                print("[AudioSegmentUploader] 📍 Restarted GPS updates after authorization")
-            }
+            print("[AudioSegmentUploader] 🔐 Status: Authorized Always - starting GPS")
+            startGPSUpdates()
         case .authorizedWhenInUse:
-            print("[AudioSegmentUploader] 🔐 Status: Authorized When In Use")
-            // Restart location updates
-            if CLLocationManager.locationServicesEnabled() {
-                locationManager?.startUpdatingLocation()
-                print("[AudioSegmentUploader] 📍 Restarted GPS updates after authorization")
-            }
+            print("[AudioSegmentUploader] 🔐 Status: Authorized When In Use - starting GPS")
+            startGPSUpdates()
         @unknown default:
             print("[AudioSegmentUploader] 🔐 Status: Unknown (\(status.rawValue))")
         }
