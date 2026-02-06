@@ -277,7 +277,14 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             autoRecordingActive = false
         }
         
-        stopReason = "manual"
+        // Set stop reason based on origem_gravacao
+        if origemGravacao == "botao_panico" {
+            stopReason = "panico_cancelado"
+            print("[AudioTriggerNative-iOS] 🛑 Panic recording cancelled by user")
+        } else {
+            stopReason = "manual"
+        }
+        
         stopRecordingInternal()
         
         // Restart monitoring after 1s delay (Android behavior)
