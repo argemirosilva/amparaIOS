@@ -263,15 +263,6 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func stopManualRecording(_ call: CAPPluginCall) {
         print("[AudioTriggerNative-iOS] 🛑 stopManualRecording() called")
         
-        // Verificar se pode parar
-        // PODE parar: gravacao manual (botao_manual) ou automatica (deteccao de briga)
-        // NÃO PODE parar: gravacao de pânico (botao_panico)
-        if origemGravacao == "botao_panico" {
-            print("[AudioTriggerNative-iOS] ⚠️ Cannot stop panic recording")
-            call.reject("Cannot stop panic recording")
-            return
-        }
-        
         if !isRecording {
             print("[AudioTriggerNative-iOS] ⚠️ Not recording")
             call.resolve(["success": true, "wasRecording": false])
