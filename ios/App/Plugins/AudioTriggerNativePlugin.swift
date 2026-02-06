@@ -647,7 +647,6 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         startAbsoluteSilenceTimer()
         
         // Notify JS
-        let deviceId = getOrCreateDeviceId()
         notifyEvent("nativeRecordingStarted", data: [
             "deviceId": deviceId,
             "startedAt": Int(Date().timeIntervalSince1970 * 1000),
