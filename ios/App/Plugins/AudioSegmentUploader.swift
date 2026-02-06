@@ -56,6 +56,13 @@ class AudioSegmentUploader: NSObject {
         locationManager?.pausesLocationUpdatesAutomatically = false
         locationManager?.showsBackgroundLocationIndicator = true // Show blue bar when using location
         
+        // Request location permission
+        let authStatus = CLLocationManager.authorizationStatus()
+        if authStatus == .notDetermined {
+            locationManager?.requestAlwaysAuthorization()
+            print("[AudioSegmentUploader] 📍 Requesting GPS permission (Always)")
+        }
+        
         // Start monitoring location
         if CLLocationManager.locationServicesEnabled() {
             locationManager?.startUpdatingLocation()
