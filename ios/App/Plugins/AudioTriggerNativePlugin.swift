@@ -463,14 +463,24 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private func startMonitoring() throws {
         print("[AudioTriggerNative-iOS] 👂 Starting monitoring (calibration + detection only)...")
         
-        // Check if already monitoring
-        if audioEngine != nil {
-            print("[AudioTriggerNative-iOS] ⚠️ Already monitoring")
-            return
+        // Force cleanup any existing audioEngine (stale state from previous session)
+        if let existingEngine = audioEngine {
+            print("[AudioTriggerNative-iOS] 🧹 Cleaning up stale audioEngine before restart")
+            existingEngine.stop()
+            existingEngine.inputNode.removeTap(onBus: 0)
+            audioEngine = nil
         }
         
-        // Configure audio session
+        // Deactivate audio session first to release any stale locks
         let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            print("[AudioTriggerNative-iOS] 🔇 Audio session deactivated for clean restart")
+        } catch {
+            print("[AudioTriggerNative-iOS] ⚠️ Could not deactivate audio session (may be fine): \(error.localizedDescription)")
+        }
+        
+        // Configure audio session fresh
         try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         
@@ -539,6 +549,14 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine = nil
         
+        // Deactivate audio session to fully release microphone
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            print("[AudioTriggerNative-iOS] 🔇 Audio session deactivated")
+        } catch {
+            print("[AudioTriggerNative-iOS] ⚠️ Could not deactivate audio session: \(error.localizedDescription)")
+        }
+        
         isCalibrated = false
         calibrationSamples = []
         
@@ -558,6 +576,12 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Configure audio session for background recording
         let audioSession = AVAudioSession.sharedInstance()
+        // Deactivate first to release any stale locks
+        do {
+            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("[AudioTriggerNative-iOS] ⚠️ Could not deactivate audio session before recording: \(error.localizedDescription)")
+        }
         try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         
@@ -702,6 +726,14 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine = nil
+        
+        // Deactivate audio session to fully release microphone
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            print("[AudioTriggerNative-iOS] 🔇 Audio session deactivated after recording")
+        } catch {
+            print("[AudioTriggerNative-iOS] ⚠️ Could not deactivate audio session after recording: \(error.localizedDescription)")
+        }
         
         // Stop segment timer
         segmentTimer?.invalidate()
