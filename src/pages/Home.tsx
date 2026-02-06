@@ -633,7 +633,7 @@ export function HomePage({ onLogout }: HomePageProps) {
       <footer className="py-4 px-4 flex items-center justify-center pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div className="flex flex-col items-center gap-0.5">
           <span className="text-[6px] text-muted-foreground/60">powered by</span>
-          <img src={orizonLogo} alt="Orizon Tech" className="h-4 object-contain mix-blend-multiply opacity-70" />
+          <img src={orizonLogo} alt="Orizon Tech" className="h-8 object-contain mix-blend-multiply opacity-70" />
         </div>
       </footer>
 
