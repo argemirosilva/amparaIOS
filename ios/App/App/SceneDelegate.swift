@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import WebKit
+import AVFoundation
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKNavigationDelegate {
     
@@ -184,6 +185,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKNavigationDelegate {
         }
         loadingTimeoutTimer?.invalidate()
         loadingTimeoutTimer = nil
+        
+        // Release AVAudioSession to prevent microphone lock on next launch
+        print("[SceneDelegate] 🚨 Scene disconnecting - releasing audio session")
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            print("[SceneDelegate] ✅ Audio session deactivated on disconnect")
+        } catch {
+            print("[SceneDelegate] ⚠️ Could not deactivate audio session: \(error.localizedDescription)")
+        }
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) { }

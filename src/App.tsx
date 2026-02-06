@@ -30,6 +30,7 @@ import { PermissionGuard } from "./components/PermissionGuard";
 import { LocationPermissionRequest } from "./components/LocationPermissionRequest";
 import { Capacitor } from '@capacitor/core';
 import KeepAlive from '@/plugins/keepAlive';
+import { AudioTriggerNative } from '@/plugins/audioTriggerNative';
 import { getDeviceId } from '@/lib/deviceId';
 import { checkPermissions } from '@/services/permissionsService';
 
@@ -120,16 +121,21 @@ const App = () => {
       
       const stopServices = async () => {
         try {
-          // Stop KeepAlive service (Android only)
           if (Capacitor.getPlatform() === 'android') {
+            // Stop KeepAlive service (Android only)
             console.log('[App] Stopping KeepAlive service...');
             await KeepAlive.stop();
             console.log('[App] KeepAlive service stopped');
+          } else if (Capacitor.getPlatform() === 'ios') {
+            // Stop native audio monitoring (iOS) - releases microphone and AVAudioSession
+            console.log('[App] Stopping AudioTriggerNative (iOS)...');
+            await AudioTriggerNative.stop();
+            console.log('[App] AudioTriggerNative stopped, microphone released');
           }
           
           setServicesInitialized(false);
         } catch (error) {
-          console.error('[App] Error stopping KeepAlive service:', error);
+          console.error('[App] Error stopping services:', error);
           setServicesInitialized(false);
         }
       };
