@@ -73,9 +73,10 @@ class AudioSegmentUploader: NSObject {
         switch authStatus {
         case .notDetermined:
             print("[AudioSegmentUploader] 🔐 Status: Not Determined - requesting Always authorization")
-            print("[AudioSegmentUploader] 🔐 Will wait for authorization callback before starting GPS")
+            print("[AudioSegmentUploader] 🔐 Will poll authorization status every 1s for 10s")
             locationManager?.requestAlwaysAuthorization()
-            // GPS will be started in didChangeAuthorization callback
+            // Start polling to check if authorization changed (iOS sometimes doesn't call didChangeAuthorization)
+            startAuthorizationPolling()
             return
         case .restricted:
             print("[AudioSegmentUploader] 🔐 Status: Restricted - cannot use GPS")
@@ -111,6 +112,49 @@ class AudioSegmentUploader: NSObject {
         // Then start continuous updates
         locationManager?.startUpdatingLocation()
         print("[AudioSegmentUploader] 📍 GPS continuous updates enabled")
+    }
+    
+    private var authPollingCount = 0
+    private var authPollingTimer: Timer?
+    
+    private func startAuthorizationPolling() {
+        authPollingCount = 0
+        authPollingTimer?.invalidate()
+        
+        authPollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            self.authPollingCount += 1
+            let currentStatus = CLLocationManager.authorizationStatus()
+            
+            print("[AudioSegmentUploader] 🔍 Polling authorization status (\(self.authPollingCount)/10): \(currentStatus.rawValue)")
+            
+            // Check if authorization changed from notDetermined
+            if currentStatus != .notDetermined {
+                print("[AudioSegmentUploader] 🔍 Authorization changed detected!")
+                timer.invalidate()
+                self.authPollingTimer = nil
+                
+                // Manually trigger what didChangeAuthorization should have done
+                if currentStatus == .authorizedAlways || currentStatus == .authorizedWhenInUse {
+                    print("[AudioSegmentUploader] 🔍 Starting GPS after authorization")
+                    self.startGPSUpdates()
+                } else {
+                    print("[AudioSegmentUploader] 🔍 Authorization denied or restricted")
+                }
+                return
+            }
+            
+            // Stop polling after 10 attempts (10 seconds)
+            if self.authPollingCount >= 10 {
+                print("[AudioSegmentUploader] 🔍 Polling timeout - authorization still not determined")
+                timer.invalidate()
+                self.authPollingTimer = nil
+            }
+        }
     }
     
     // MARK: - Recording
