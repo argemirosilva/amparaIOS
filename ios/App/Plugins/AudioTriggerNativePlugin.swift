@@ -1837,8 +1837,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return url
         }
         
-        // Fallback to production URL
-        return "https://amparamulher.com.br/api/mobile.php"
+        // Fallback to Supabase URL
+        return "https://ilikiajeduezvvanjejz.supabase.co/functions/v1/mobile-api"
     }
     
     // MARK: - Event Notification
