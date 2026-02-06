@@ -1848,6 +1848,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
+        // Get device ID
+        let deviceId = UserDefaults.standard.string(forKey: "device_id") ?? "unknown"
+        
         // Build payload
         let payload: [String: Any] = [
             "action": "enviarLocalizacaoGPS",
@@ -1855,6 +1858,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             "email_usuario": email,
             "latitude": location.coordinate.latitude,
             "longitude": location.coordinate.longitude,
+            "precisao_metros": location.horizontalAccuracy,
+            "device_id": deviceId,
             "timestamp": ISO8601DateFormatter().string(from: Date())
         ]
         
