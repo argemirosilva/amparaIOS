@@ -29,7 +29,6 @@ import { useBackgroundServices } from '@/hooks/useBackgroundServices';
 import { useHeartbeat } from '@/hooks/useHeartbeat';
 import { hybridAudioTrigger } from '@/services/hybridAudioTriggerService';
 import { getSessionToken, getRefreshToken, getUserData } from '@/services/sessionService';
-import { getDeviceId } from '@/lib/deviceId';
 import { audioTriggerSingleton } from '@/services/audioTriggerSingleton';
 import { getMonitoringGateStatus } from '@/services/monitoringGateService';
 
@@ -263,21 +262,18 @@ export function HomePage({ onLogout }: HomePageProps) {
       const refreshToken = getRefreshToken();
       const userData = getUserData();
       const emailUsuario = userData ? JSON.parse(userData).email : null;
-      const deviceId = getDeviceId();
       
       console.log('[Home] 🔑 Credentials:', { 
         hasSessionToken: !!sessionToken, 
         hasRefreshToken: !!refreshToken, 
-        emailUsuario,
-        deviceId
+        emailUsuario
       });
       
-      // Pass credentials and device_id to native
+      // Pass credentials to native (iOS generates and manages device_id internally)
       const config = {
         sessionToken,
         refreshToken,
-        emailUsuario,
-        deviceId
+        emailUsuario
       };
       
       hybridAudioTrigger.start(config).then(() => {

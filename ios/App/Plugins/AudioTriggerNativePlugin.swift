@@ -33,7 +33,6 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var audioFile: AVAudioFile?
     private var isRecording = false
     private var isCalibrated = false
-    private var sessionId: String?
     private var sessionToken: String?
     private var refreshToken: String?
     private var emailUsuario: String?
@@ -170,12 +169,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             emailUsuario = email
         }
         
-        // Store device_id from JavaScript (to match login device_id)
-        if let deviceId = call.getString("deviceId") {
-            UserDefaults.standard.set(deviceId, forKey: "device_id")
-            UserDefaults.standard.synchronize()
-            print("[AudioTriggerNative-iOS] 🆔 Device ID received from JavaScript: \(deviceId)")
-        }
+        // iOS generates and manages device_id internally
+        // No need to receive from JavaScript - iOS is the source of truth
+        let deviceId = getOrCreateDeviceId()
+        print("[AudioTriggerNative-iOS] 🆔 Using device_id: \(deviceId)")
         
         // Request microphone permission for monitoring
         AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
@@ -311,10 +308,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getStatus(_ call: CAPPluginCall) {
         print("[AudioTriggerNative-iOS] 📊 getStatus() called")
         
+        let deviceId = getOrCreateDeviceId()
         call.resolve([
             "isRecording": isRecording,
             "isCalibrated": isCalibrated,
-            "sessionId": sessionId ?? ""
+            "deviceId": deviceId
         ])
     }
     
@@ -598,15 +596,16 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             throw NSError(domain: "AudioTriggerNative", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to create recording format"])
         }
         
-        // Generate session ID
-        sessionId = "ios_\(Date().timeIntervalSince1970)_\(UUID().uuidString.prefix(8))"
+        // Use device_id from JavaScript (no longer generate sessionId)
+        // sessionId is now replaced by device_id for consistency
         
         // Create uploader
         guard let token = sessionToken, let email = emailUsuario else {
             throw NSError(domain: "AudioTriggerNative", code: -3, userInfo: [NSLocalizedDescriptionKey: "Missing credentials"])
         }
+        let deviceId = getOrCreateDeviceId()
         uploader = AudioSegmentUploader(
-            sessionId: sessionId!,
+            sessionId: deviceId,
             sessionToken: token,
             emailUsuario: email,
             origemGravacao: origemGravacao
@@ -648,8 +647,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         startAbsoluteSilenceTimer()
         
         // Notify JS
+        let deviceId = getOrCreateDeviceId()
         notifyEvent("nativeRecordingStarted", data: [
-            "sessionId": sessionId ?? "",
+            "deviceId": deviceId,
             "startedAt": Int(Date().timeIntervalSince1970 * 1000),
             "origemGravacao": origemGravacao
         ])
@@ -660,8 +660,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         // Restart GPS timer with 10-second interval during recording
         startGpsTimer(interval: gpsIntervalRecording)
         
-        let sid = sessionId ?? ""
-        print("[AudioTriggerNative-iOS] OK Recording started, sessionId: \(sid)")
+        print("[AudioTriggerNative-iOS] ✅ Recording started, device_id: \(deviceId)")
     }
     
     private func stopRecordingInternal() {
@@ -1201,13 +1200,15 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: - Server Communication
     
     private func reportRecordingStatus(_ status: String) {
-        guard let sessionId = sessionId, let token = sessionToken else {
-            print("[AudioTriggerNative-iOS] ⚠️ Cannot report status: missing sessionId or token")
+        guard let token = sessionToken else {
+            print("[AudioTriggerNative-iOS] ⚠️ Cannot report status: missing token")
             return
         }
         
+        let deviceId = getOrCreateDeviceId()
+        
         print("[AudioTriggerNative-iOS] 📡 Reporting status: \(status)")
-        print("[AudioTriggerNative-iOS] 📡 Session ID: \(sessionId)")
+        print("[AudioTriggerNative-iOS] 📡 Device ID: \(deviceId)")
         print("[AudioTriggerNative-iOS] 📡 Email: \(emailUsuario ?? "nil")")
         
         // Build URL - usando endpoint Supabase
@@ -1226,7 +1227,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         // Build body JSON matching API specification
         var body: [String: Any] = [
             "action": "reportarStatusGravacao",
-            "device_id": sessionId,
+            "device_id": deviceId,
             "timezone": timezone,
             "timezone_offset_minutes": timezoneOffset,
             "session_token": token,
@@ -1869,18 +1870,30 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func getOrCreateDeviceId() -> String {
-        // Try to get existing device_id from UserDefaults (set by JavaScript)
+        // Try to get existing device_id from UserDefaults
         if let existingId = UserDefaults.standard.string(forKey: "device_id"), !existingId.isEmpty {
             return existingId
         }
         
-        // If no device_id exists, this is an error - JavaScript should have provided it
-        // Fallback: generate temporary ID (will be replaced when start() is called with deviceId)
-        let tempId = "ios_temp_\(UUID().uuidString)"
-        print("[AudioTriggerNative-iOS] ⚠️ No device_id found - using temporary: \(tempId)")
-        print("[AudioTriggerNative-iOS] ⚠️ JavaScript should provide device_id in start() call")
+        // Generate new device_id using identifierForVendor (persists across app reinstalls)
+        var deviceId: String
         
-        return tempId
+        if let vendorId = UIDevice.current.identifierForVendor {
+            // Use vendor UUID (persists unless ALL apps from same vendor are uninstalled)
+            deviceId = vendorId.uuidString
+        } else {
+            // Fallback: generate random UUID (should never happen)
+            deviceId = UUID().uuidString
+        }
+        
+        // Save to UserDefaults for future use
+        UserDefaults.standard.set(deviceId, forKey: "device_id")
+        UserDefaults.standard.synchronize()
+        
+        print("[AudioTriggerNative-iOS] 🆔 Generated new device_id: \(deviceId)")
+        print("[AudioTriggerNative-iOS] 🆔 This device_id will be used for the lifetime of the app")
+        
+        return deviceId
     }
     
     // MARK: - Event Notification
