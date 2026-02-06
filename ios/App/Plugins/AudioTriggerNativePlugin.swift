@@ -1729,7 +1729,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         // Get device info
         let device = UIDevice.current
         let deviceModel = "\(device.model) (iOS \(device.systemVersion))"
-        let deviceId = UserDefaults.standard.string(forKey: "device_id") ?? "unknown"
+        let deviceId = getOrCreateDeviceId()
         let deviceName = device.name // Nome configurado pelo usuário (ex: "iPhone de Maria")
         
         // Get battery info
@@ -1822,6 +1822,26 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                             ])
                         }
                     }
+                } else if httpResponse.statusCode == 403 {
+                    // Device mismatch or permission error
+                    print("[AudioTriggerNative-iOS] 🚫 Device mismatch (403) - device_id may have changed")
+                    
+                    // Parse error message from response
+                    var errorMessage = "Device mismatch - please login again"
+                    if let data = data,
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let message = json["message"] as? String {
+                        errorMessage = message
+                    }
+                    
+                    // Stop ping timer
+                    self.stopPingTimer()
+                    
+                    // Notify JavaScript
+                    self.notifyEvent("sessionExpired", data: [
+                        "reason": "device_mismatch",
+                        "message": errorMessage
+                    ])
                 } else {
                     print("[AudioTriggerNative-iOS] ⚠️ Ping returned status \(httpResponse.statusCode)")
                 }
@@ -1839,6 +1859,32 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Fallback to Supabase URL
         return "https://ilikiajeduezvvanjejz.supabase.co/functions/v1/mobile-api"
+    }
+    
+    private func getOrCreateDeviceId() -> String {
+        // Try to get existing device_id from UserDefaults
+        if let existingId = UserDefaults.standard.string(forKey: "device_id"), !existingId.isEmpty {
+            return existingId
+        }
+        
+        // Generate new device_id using identifierForVendor (persists across app reinstalls)
+        var deviceId: String
+        
+        if let vendorId = UIDevice.current.identifierForVendor {
+            // Use vendor UUID (persists unless all apps from same vendor are uninstalled)
+            deviceId = "ios_\(vendorId.uuidString)"
+        } else {
+            // Fallback: generate random UUID (should never happen)
+            deviceId = "ios_\(UUID().uuidString)"
+        }
+        
+        // Save to UserDefaults for future use
+        UserDefaults.standard.set(deviceId, forKey: "device_id")
+        UserDefaults.standard.synchronize()
+        
+        print("[AudioTriggerNative-iOS] 🆔 Generated new device_id: \(deviceId)")
+        
+        return deviceId
     }
     
     // MARK: - Event Notification
@@ -1896,7 +1942,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         // Get device ID
-        let deviceId = UserDefaults.standard.string(forKey: "device_id") ?? "unknown"
+        let deviceId = getOrCreateDeviceId()
         
         // Get battery info
         let device = UIDevice.current
