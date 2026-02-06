@@ -28,6 +28,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useBackgroundServices } from '@/hooks/useBackgroundServices';
 import { useHeartbeat } from '@/hooks/useHeartbeat';
 import { hybridAudioTrigger } from '@/services/hybridAudioTriggerService';
+import { getSessionToken, getRefreshToken, getUserData } from '@/services/sessionService';
 import { audioTriggerSingleton } from '@/services/audioTriggerSingleton';
 import { getMonitoringGateStatus } from '@/services/monitoringGateService';
 
@@ -250,12 +251,32 @@ export function HomePage({ onLogout }: HomePageProps) {
     // - Foreground/background transitions
     console.log('[Home] 🟢 Phase 4: Auto-starting hybrid audio trigger...');
     const timer = setTimeout(() => {
-      console.log('\n\n\n');
-    console.log('🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢');
-    console.log('🟢 CHAMANDO hybridAudioTrigger.start() AGORA!');
-    console.log('🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢');
     console.log('\n\n\n');
-      hybridAudioTrigger.start().then(() => {
+    console.log('🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢');
+    console.log('🜢 CHAMANDO hybridAudioTrigger.start() AGORA!');
+    console.log('🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢🜢');
+    console.log('\n\n\n');
+      
+      // Get credentials from session
+      const sessionToken = getSessionToken();
+      const refreshToken = getRefreshToken();
+      const userData = getUserData();
+      const emailUsuario = userData ? JSON.parse(userData).email : null;
+      
+      console.log('[Home] 🔑 Credentials:', { 
+        hasSessionToken: !!sessionToken, 
+        hasRefreshToken: !!refreshToken, 
+        emailUsuario 
+      });
+      
+      // Pass credentials to native
+      const config = {
+        sessionToken,
+        refreshToken,
+        emailUsuario
+      };
+      
+      hybridAudioTrigger.start(config).then(() => {
         console.log('[Home] ✅ hybridAudioTrigger.start() completed successfully');
       }).catch(err => {
         console.error('[Home] Failed to auto-start hybrid audio trigger:', err);
