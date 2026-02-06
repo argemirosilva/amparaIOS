@@ -1945,27 +1945,40 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func setupLocationManager() {
-        locationManager = CLLocationManager()
-        locationManager?.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager?.distanceFilter = 10 // Update every 10 meters
-        locationManager?.delegate = self
-        
-        // Enable background location updates
-        locationManager?.allowsBackgroundLocationUpdates = true
-        locationManager?.pausesLocationUpdatesAutomatically = false
-        locationManager?.showsBackgroundLocationIndicator = true
-        
-        // Request location permission
-        let authStatus = CLLocationManager.authorizationStatus()
-        if authStatus == .notDetermined {
-            locationManager?.requestAlwaysAuthorization()
-            print("[AudioTriggerNative-iOS] 📍 Requesting GPS permission (Always)")
-        }
-        
-        // Start monitoring location
-        if CLLocationManager.locationServicesEnabled() {
-            locationManager?.startUpdatingLocation()
-            print("[AudioTriggerNative-iOS] 📍 GPS started with background updates enabled")
+        // MUST be called on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.locationManager = CLLocationManager()
+            self.locationManager?.desiredAccuracy = kCLLocationAccuracyBest
+            self.locationManager?.distanceFilter = 10 // Update every 10 meters
+            self.locationManager?.delegate = self
+            
+            // Enable background location updates
+            self.locationManager?.allowsBackgroundLocationUpdates = true
+            self.locationManager?.pausesLocationUpdatesAutomatically = false
+            self.locationManager?.showsBackgroundLocationIndicator = true
+            
+            // Request location permission
+            let authStatus = CLLocationManager.authorizationStatus()
+            print("[AudioTriggerNative-iOS] 📍 Current GPS authorization status: \(authStatus.rawValue)")
+            
+            if authStatus == .notDetermined {
+                self.locationManager?.requestAlwaysAuthorization()
+                print("[AudioTriggerNative-iOS] 📍 Requesting GPS permission (Always)")
+            } else if authStatus == .authorizedAlways || authStatus == .authorizedWhenInUse {
+                print("[AudioTriggerNative-iOS] ✅ GPS permission already granted")
+            } else {
+                print("[AudioTriggerNative-iOS] ❌ GPS permission denied or restricted")
+            }
+            
+            // Start monitoring location
+            if CLLocationManager.locationServicesEnabled() {
+                self.locationManager?.startUpdatingLocation()
+                print("[AudioTriggerNative-iOS] 📍 GPS started with background updates enabled")
+            } else {
+                print("[AudioTriggerNative-iOS] ⚠️ Location services are disabled")
+            }
         }
     }
 }

@@ -70,6 +70,9 @@
   <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
   <string>Para situações de emergência, o AMPARA pode precisar acessar sua localização mesmo quando o aplicativo não estiver aberto.</string>
 
+  <key>NSLocationAlwaysUsageDescription</key>
+  <string>Para situações de emergência, o AMPARA pode precisar acessar sua localização mesmo quando o aplicativo não estiver aberto.</string>
+
   <key>UIBackgroundModes</key>
   <array>
     <string>location</string>
