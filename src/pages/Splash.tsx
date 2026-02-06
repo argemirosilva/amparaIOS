@@ -8,10 +8,10 @@ interface SplashPageProps {
 
 export function SplashPage({ onComplete }: SplashPageProps) {
   useEffect(() => {
-    // Auto-advance after 3 seconds
+    // Auto-advance after 4 seconds
     const timer = setTimeout(() => {
       onComplete();
-    }, 3000);
+    }, 4000);
 
     return () => clearTimeout(timer);
   }, [onComplete]);
