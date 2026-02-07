@@ -22,14 +22,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         bridgeVC.additionalSafeAreaInsets = UIEdgeInsets(top: 80, left: 0, bottom: 0, right: 0)
         self.bridgeViewController = bridgeVC
 
-        // Proactively register as KVO observer so that any internal
-        // removeObserver call during teardown will NOT crash.
-        if let webView = bridgeVC.bridge?.webView {
-            webView.addObserver(self, forKeyPath: "estimatedProgress", options: .new, context: nil)
-            isObservingProgress = true
-            print("[SceneDelegate] 🔗 KVO observer added proactively")
-        }
-
         // Show bridge immediately – Capacitor handles its own loading.
         window.rootViewController = bridgeVC
         window.makeKeyAndVisible()
@@ -38,9 +30,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // Register plugins once bridge is ready
         registerPluginsWithRetry()
+        
+        // Proactively register as KVO observer AFTER a short delay
+        // to ensure webView is initialized by Capacitor.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.addProgressObserverIfNeeded()
+        }
     }
 
     // MARK: - KVO (exists solely to prevent crash on teardown)
+
+    private func addProgressObserverIfNeeded() {
+        guard !isObservingProgress,
+              let webView = bridgeViewController?.bridge?.webView else {
+            print("[SceneDelegate] ⚠️ WebView not ready for KVO observer")
+            return
+        }
+        webView.addObserver(self, forKeyPath: "estimatedProgress", options: .new, context: nil)
+        isObservingProgress = true
+        print("[SceneDelegate] 🔗 KVO observer added proactively")
+    }
 
     override func observeValue(forKeyPath keyPath: String?,
                                of object: Any?,
