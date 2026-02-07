@@ -158,14 +158,9 @@ export function LoginPage({ onLoginSuccess, onLogout }: LoginPageProps) {
             className="relative z-10 w-full max-w-xs bg-white rounded-2xl shadow-lg p-5"
           >
         {/* Logo with entrance animation */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, delay: 0.1, ease: 'easeOut' }}
-          className="flex justify-center mb-3"
-        >
+        <div className="flex justify-center mb-3">
           <LogoWithText size="md" />
-        </motion.div>
+        </div>
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
