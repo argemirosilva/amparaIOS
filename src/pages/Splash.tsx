@@ -24,15 +24,20 @@ export function SplashPage({ onComplete }: SplashPageProps) {
         paddingBottom: 'env(safe-area-inset-bottom)' 
       }}
     >
-      <div className="flex flex-col items-center gap-8">
-        {/* Logo Ampara */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.2, ease: 'easeOut' }}
+        className="flex flex-col items-center gap-8"
+      >
+        {/* Logo Ampara - grande */}
         <Logo size="xl" />
         
         {/* Frase */}
         <p className="text-xl text-center text-foreground/80 font-light max-w-md">
           Você não precisa mais estar sozinha.
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }
