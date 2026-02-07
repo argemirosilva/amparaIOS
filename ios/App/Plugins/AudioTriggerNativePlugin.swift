@@ -174,7 +174,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                     self.notifyListeners("debugPermissionGranted", data: ["message": "Permissão concedida!"])
                     
                     // Start monitoring with retry (handles stale AVAudioSession after swipe-up kill)
-                    self.startMonitoringWithRetry(maxAttempts: 3, delay: 1.0) { success, error in
+                    // 5 attempts with increasing delay: 1s, 2s, 3s, 4s, 5s
+                    self.startMonitoringWithRetry(maxAttempts: 5, delay: 1.0) { success, error in
                         if success {
                             self.notifyListeners("debugMonitoringStarted", data: ["message": "Monitoramento iniciado!"])
                             call.resolve(["success": true])
@@ -191,9 +192,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
     
-    /// Attempts to start monitoring with retries and delay between attempts.
-    /// After a swipe-up kill, iOS may keep the AVAudioSession locked briefly.
-    /// Retrying after a short delay gives the OS time to release it.
+    /// Attempts to start monitoring with retries and increasing delay between attempts.
+    /// After a swipe-up kill, iOS may keep the AVAudioSession locked for several seconds.
+    /// Retrying with increasing delays gives the OS time to release it.
     private func startMonitoringWithRetry(maxAttempts: Int, delay: TimeInterval, attempt: Int = 1, completion: @escaping (Bool, Error?) -> Void) {
         do {
             try startMonitoring()
@@ -203,8 +204,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             print("[AudioTriggerNative-iOS] ⚠️ Attempt \(attempt)/\(maxAttempts) failed: \(error.localizedDescription)")
             
             if attempt < maxAttempts {
-                print("[AudioTriggerNative-iOS] ⏳ Retrying in \(delay)s...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                // Increasing delay: 1s, 2s, 3s, 4s...
+                let nextDelay = delay * Double(attempt)
+                print("[AudioTriggerNative-iOS] ⏳ Retrying in \(nextDelay)s (attempt \(attempt + 1)/\(maxAttempts))...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay) { [weak self] in
                     self?.startMonitoringWithRetry(maxAttempts: maxAttempts, delay: delay, attempt: attempt + 1, completion: completion)
                 }
             } else {
@@ -1629,15 +1632,23 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc private func handleAppDidBecomeActive(_ notification: Notification) {
         print("[AudioTriggerNative-iOS] 🔸 App did become active (returning from background/lock)")
         
+        // Only restart if we had credentials (user was logged in)
+        guard sessionToken != nil else {
+            print("[AudioTriggerNative-iOS] ⚠️ No session token - skipping auto-restart (waiting for JS start() call)")
+            return
+        }
+        
         // Restart audio engine if it stopped
         if audioEngine == nil || audioEngine?.isRunning == false {
-            print("[AudioTriggerNative-iOS] ⚠️ Audio engine stopped - restarting with retry")
+            print("[AudioTriggerNative-iOS] ⚠️ Audio engine stopped - restarting with retry (5 attempts, increasing delay)")
             
-            startMonitoringWithRetry(maxAttempts: 3, delay: 1.0) { success, error in
+            startMonitoringWithRetry(maxAttempts: 5, delay: 1.0) { success, error in
                 if success {
                     print("[AudioTriggerNative-iOS] ✅ Monitoring restarted after returning from background")
                 } else {
-                    print("[AudioTriggerNative-iOS] ❌ Failed to restart monitoring after retries: \(error?.localizedDescription ?? "unknown")")
+                    print("[AudioTriggerNative-iOS] ❌ Failed to restart monitoring after 5 retries: \(error?.localizedDescription ?? "unknown")")
+                    // Notify JS so the UI can show an error and let user retry
+                    self.notifyListeners("monitoringError", data: ["error": "Failed to restart monitoring after app reopen. Please try again."])
                 }
             }
         }
