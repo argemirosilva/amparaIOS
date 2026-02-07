@@ -174,8 +174,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                     self.notifyListeners("debugPermissionGranted", data: ["message": "Permissão concedida!"])
                     
                     // Start monitoring with retry (handles stale AVAudioSession after swipe-up kill)
-                    // 5 attempts with increasing delay: 1s, 2s, 3s, 4s, 5s
-                    self.startMonitoringWithRetry(maxAttempts: 5, delay: 1.0) { success, error in
+                    // Wait 1s before first attempt to give iOS time to release resources from killed process
+                    // Then 5 attempts with increasing delay: 2s, 4s, 6s, 8s, 10s
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.startMonitoringWithRetry(maxAttempts: 5, delay: 2.0) { success, error in
                         if success {
                             self.notifyListeners("debugMonitoringStarted", data: ["message": "Monitoramento iniciado!"])
                             call.resolve(["success": true])
@@ -184,6 +186,7 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                             call.reject("Failed to start monitoring: \(error?.localizedDescription ?? "unknown")")
                         }
                     }
+                    } // end asyncAfter
                 }
             } else {
                 print("[AudioTriggerNative-iOS] ❌ Microphone permission denied")
@@ -481,17 +484,18 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             audioEngine = nil
         }
         
-        // Deactivate audio session first to release any stale locks
+        // STEP 1: Force deactivate audio session (ignore errors - session may not be active)
         let audioSession = AVAudioSession.sharedInstance()
-        do {
-            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            print("[AudioTriggerNative-iOS] 🔇 Audio session deactivated for clean restart")
-        } catch {
-            print("[AudioTriggerNative-iOS] ⚠️ Could not deactivate audio session (may be fine): \(error.localizedDescription)")
-        }
+        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        print("[AudioTriggerNative-iOS] 🔇 Audio session force-deactivated")
         
-        // Configure audio session fresh
-        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+        // STEP 2: Small pause to let iOS release audio resources
+        Thread.sleep(forTimeInterval: 0.3)
+        
+        // STEP 3: Configure audio session fresh (use try? for category, throw on setActive)
+        try? audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+        
+        // STEP 4: Try to activate - this is the critical step that can fail after kill
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         
         // Create audio engine
