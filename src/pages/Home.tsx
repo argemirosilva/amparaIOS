@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Capacitor, App } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { Triangle, Menu, LogOut, X, Upload, Calendar, Wifi, WifiOff, Palette, Info, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
