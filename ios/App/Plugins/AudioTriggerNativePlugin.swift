@@ -136,6 +136,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var locationManager: CLLocationManager?
     private var currentLocation: CLLocation?
     
+    // Monitoring period tracking
+    private var periodCheckTimer: DispatchSourceTimer?
+    private var lastPeriodStatus: Bool = false // Track if we were in period last check
+    
     // MARK: - Capacitor Methods
     
     @objc func start(_ call: CAPPluginCall) {
@@ -554,6 +558,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             let interval = isWithinMonitoringPeriod() ? gpsIntervalMonitoring : gpsIntervalOutsidePeriod
             startGpsTimer(interval: interval)
             print("[AudioTriggerNative-iOS] 📍 GPS timer started with \(interval)s interval (within period: \(isWithinMonitoringPeriod()))")
+            
+            // Start period check timer to detect when entering/exiting monitoring periods
+            startPeriodCheckTimer()
         } else {
             print("[AudioTriggerNative-iOS] ⚠️ Skipping ping/GPS timers: user not logged in")
         }
@@ -576,6 +583,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         // Stop GPS timer
         stopGpsTimer()
+        
+        // Stop period check timer
+        stopPeriodCheckTimer()
         
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
@@ -1369,6 +1379,63 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }.resume()
     }
     
+    private func reportMonitoringStatus(_ status: String, isMonitoring: Bool, motivo: String = "agenda_automatica") {
+        guard let email = emailUsuario else {
+            print("[AudioTriggerNative-iOS] ⚠️ Cannot report monitoring status: missing email")
+            return
+        }
+        
+        let deviceId = getOrCreateDeviceId()
+        
+        print("[AudioTriggerNative-iOS] 📡 Reporting monitoring status: \(status), is_monitoring: \(isMonitoring)")
+        print("[AudioTriggerNative-iOS] 📡 Device ID: \(deviceId)")
+        print("[AudioTriggerNative-iOS] 📡 Email: \(email)")
+        
+        // Build URL
+        let url = URL(string: "https://ilikiajeduezvvanjejz.supabase.co/functions/v1/mobile-api")!
+        
+        // Build body JSON
+        let body: [String: Any] = [
+            "action": "reportarStatusMonitoramento",
+            "email_usuario": email,
+            "device_id": deviceId,
+            "status_monitoramento": status,
+            "is_monitoring": isMonitoring,
+            "motivo": motivo
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        print("[AudioTriggerNative-iOS] 📡 Sending monitoring status to: \(url.absoluteString)")
+        print("[AudioTriggerNative-iOS] 📡 Request body: \(String(data: jsonData, encoding: .utf8) ?? "invalid")")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("[AudioTriggerNative-iOS] ❌ Failed to report monitoring status: \(error.localizedDescription)")
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("[AudioTriggerNative-iOS] 📊 HTTP Status: \(httpResponse.statusCode)")
+                
+                if let data = data, let responseBody = String(data: data, encoding: .utf8) {
+                    print("[AudioTriggerNative-iOS] 📊 Response body: \(responseBody)")
+                }
+                
+                if httpResponse.statusCode == 200 {
+                    print("[AudioTriggerNative-iOS] ✅ Monitoring status '\(status)' reported successfully")
+                } else {
+                    print("[AudioTriggerNative-iOS] ❌ Monitoring status report failed with code: \(httpResponse.statusCode)")
+                }
+            }
+        }.resume()
+    }
+    
     // MARK: - Background Task
     
     private func startBackgroundTask() {
@@ -2025,6 +2092,64 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         gpsTimer?.cancel()
         gpsTimer = nil
         print("[AudioTriggerNative-iOS] ⏹️ GPS timer stopped")
+    }
+    
+    // MARK: - Monitoring Period Check Timer
+    
+    private func startPeriodCheckTimer() {
+        // Stop existing timer if any
+        stopPeriodCheckTimer()
+        
+        // Initialize last period status
+        lastPeriodStatus = isWithinMonitoringPeriod()
+        
+        // Check every 30 seconds for period changes
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timer.schedule(deadline: .now() + 30.0, repeating: 30.0)
+        timer.setEventHandler { [weak self] in
+            self?.checkPeriodChange()
+        }
+        timer.resume()
+        periodCheckTimer = timer
+        
+        print("[AudioTriggerNative-iOS] 🕒 Period check timer started (checking every 30s)")
+    }
+    
+    private func stopPeriodCheckTimer() {
+        periodCheckTimer?.cancel()
+        periodCheckTimer = nil
+        print("[AudioTriggerNative-iOS] ⏹️ Period check timer stopped")
+    }
+    
+    private func checkPeriodChange() {
+        let currentStatus = isWithinMonitoringPeriod()
+        
+        // Check if status changed
+        if currentStatus != lastPeriodStatus {
+            print("[AudioTriggerNative-iOS] 🔄 Monitoring period status changed: \(lastPeriodStatus) → \(currentStatus)")
+            
+            if currentStatus {
+                // Entered monitoring period
+                print("[AudioTriggerNative-iOS] ▶️ Entered monitoring period")
+                reportMonitoringStatus("janela_iniciada", isMonitoring: true)
+                
+                // Adjust GPS interval to 1 minute
+                if !isRecording {
+                    startGpsTimer(interval: gpsIntervalMonitoring)
+                }
+            } else {
+                // Exited monitoring period
+                print("[AudioTriggerNative-iOS] ⏹️ Exited monitoring period")
+                reportMonitoringStatus("janela_finalizada", isMonitoring: false)
+                
+                // Adjust GPS interval to 30 minutes
+                if !isRecording {
+                    startGpsTimer(interval: gpsIntervalOutsidePeriod)
+                }
+            }
+            
+            lastPeriodStatus = currentStatus
+        }
     }
     
     // Called by AudioSegmentUploader when GPS location is updated
