@@ -441,7 +441,7 @@ export function HomePage({ onLogout }: HomePageProps) {
         />
       </div>
       {/* Header */}
-      <header className="flex items-center justify-between px-4 pb-4 bg-background" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
+      <header className="flex items-center justify-between px-4 pb-4 bg-background" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 2rem)' }}>
         <Logo size="sm" />
         <div className="flex items-center gap-2">
           {/* Connectivity indicator */}
