@@ -290,7 +290,7 @@ export function HomePage({ onLogout }: HomePageProps) {
       });
     }, 500);
     return () => clearTimeout(timer);
-  }, [toast, audioTrigger.isCapturing]);
+  }, [toast]); // Removed audioTrigger.isCapturing from deps - was preventing useEffect from running
 
   // Periodic check for monitoring period changes (every minute)
   // This ensures the app switches modes automatically when entering/exiting periods
