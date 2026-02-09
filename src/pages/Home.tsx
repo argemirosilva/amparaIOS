@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, App } from '@capacitor/core';
 import { Triangle, Menu, LogOut, X, Upload, Calendar, Wifi, WifiOff, Palette, Info, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -291,6 +291,44 @@ export function HomePage({ onLogout }: HomePageProps) {
     }, 500);
     return () => clearTimeout(timer);
   }, [toast]); // Removed audioTrigger.isCapturing from deps - was preventing useEffect from running
+
+  // Send tokens to native when app resumes from background (for already-logged-in users)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const handleAppStateChange = (state: { isActive: boolean }) => {
+      if (state.isActive) {
+        console.log('[Home] 🔄 App resumed - sending tokens to native');
+        
+        // Get credentials from session
+        const sessionToken = getSessionToken();
+        const refreshToken = getRefreshToken();
+        const userData = getUserData();
+        const emailUsuario = userData ? JSON.parse(userData).email : null;
+        
+        if (sessionToken && emailUsuario) {
+          console.log('[Home] 🔑 Updating native config with tokens on resume');
+          const config = {
+            sessionToken,
+            refreshToken,
+            emailUsuario
+          };
+          
+          hybridAudioTrigger.start(config).catch(err => {
+            console.error('[Home] Failed to update config on resume:', err);
+          });
+        } else {
+          console.log('[Home] ⚠️ No tokens found on resume - user not logged in');
+        }
+      }
+    };
+
+    const listener = App.addListener('appStateChange', handleAppStateChange);
+    
+    return () => {
+      listener.remove();
+    };
+  }, []);
 
   // Periodic check for monitoring period changes (every minute)
   // This ensures the app switches modes automatically when entering/exiting periods
