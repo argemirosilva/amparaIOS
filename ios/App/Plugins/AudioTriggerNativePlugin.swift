@@ -155,14 +155,24 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         setupAudioInterruptionObservers()
         
         // Store credentials for future use
+        print("[AudioTriggerNative-iOS] 🔍 Checking for tokens in start() call...")
         if let token = call.getString("sessionToken") {
             sessionToken = token
+            print("[AudioTriggerNative-iOS] ✅ sessionToken received: \(token.prefix(20))...")
+        } else {
+            print("[AudioTriggerNative-iOS] ❌ sessionToken NOT provided in start() call")
         }
         if let refresh = call.getString("refreshToken") {
             refreshToken = refresh
+            print("[AudioTriggerNative-iOS] ✅ refreshToken received: \(refresh.prefix(20))...")
+        } else {
+            print("[AudioTriggerNative-iOS] ❌ refreshToken NOT provided in start() call")
         }
         if let email = call.getString("emailUsuario") {
             emailUsuario = email
+            print("[AudioTriggerNative-iOS] ✅ emailUsuario received: \(email)")
+        } else {
+            print("[AudioTriggerNative-iOS] ❌ emailUsuario NOT provided in start() call")
         }
         
         // iOS generates and manages device_id internally
