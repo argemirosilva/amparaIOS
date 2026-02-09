@@ -46,9 +46,12 @@ export function useAuth() {
     email: string, 
     password: string
   ): Promise<{ success: boolean; error?: string; isCoercion?: boolean }> => {
+    console.log('🔐🔐🔐 [useAuth] login() called with email:', email);
     setState(prev => ({ ...prev, isLoading: true }));
 
+    console.log('🔐 [useAuth] Calling loginCustomizado...');
     const result = await loginCustomizado(email, password);
+    console.log('🔐 [useAuth] loginCustomizado returned:', result.error ? `ERROR: ${result.error}` : 'SUCCESS');
 
     if (result.error || !result.data) {
       setState(prev => ({ ...prev, isLoading: false }));
