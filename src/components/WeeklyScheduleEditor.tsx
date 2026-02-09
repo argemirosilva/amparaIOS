@@ -213,9 +213,9 @@ export function WeeklyScheduleEditor({ initialSchedule, onScheduleChange }: Week
                   {/* Add period form */}
                   {editingDay === day ? (
                     <div className="space-y-3 bg-card border border-border p-3 rounded">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Início</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Ínicio</Label>
                           <Input
                             type="time"
                             value={editingPeriod.inicio}
@@ -223,7 +223,7 @@ export function WeeklyScheduleEditor({ initialSchedule, onScheduleChange }: Week
                             className="h-9"
                           />
                         </div>
-                        <div>
+                        <div className="space-y-1.5">
                           <Label className="text-xs">Fim</Label>
                           <Input
                             type="time"
