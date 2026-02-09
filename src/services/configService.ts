@@ -250,8 +250,27 @@ async function updateNativeAudioTrigger(config: AppConfig): Promise<void> {
   }
   
   try {
+    // Get current session tokens
+    const sessionToken = sessionService.getSessionToken();
+    const refreshToken = sessionService.getRefreshToken();
+    const userData = sessionService.getUserData();
+    
+    // Parse email from user data
+    let emailUsuario: string | undefined;
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        emailUsuario = user.email || user.usuario_email || undefined;
+      } catch (e) {
+        console.warn('[ConfigService] Failed to parse user data:', e);
+      }
+    }
+    
     const nativeConfig = {
-      monitoringPeriods: config.monitoring_periods || []
+      monitoringPeriods: config.monitoring_periods || [],
+      sessionToken: sessionToken || undefined,
+      refreshToken: refreshToken || undefined,
+      emailUsuario: emailUsuario || undefined
       // audioTriggerConfig: NEVER use from API - always use DEFAULT_CONFIG
     };
     
