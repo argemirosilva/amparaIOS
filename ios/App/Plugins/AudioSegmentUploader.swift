@@ -436,6 +436,21 @@ class AudioSegmentUploader: NSObject {
         // Delete output file if exists
         try? FileManager.default.removeItem(at: outputURL)
         
+        // Validate input file before conversion
+        guard let fileAttributes = try? FileManager.default.attributesOfItem(atPath: inputURL.path),
+              let fileSize = fileAttributes[.size] as? UInt64 else {
+            print("[AudioSegmentUploader] ⚠️ Cannot get file attributes for \(inputURL.path)")
+            completion(false)
+            return
+        }
+        
+        // Check if file is too small (likely corrupted or incomplete)
+        if fileSize < 1024 {
+            print("[AudioSegmentUploader] ⚠️ Input file too small (\(fileSize) bytes), likely corrupted - skipping conversion")
+            completion(false)
+            return
+        }
+        
         print("[AudioSegmentUploader] 🔄 Converting M4A to MP3 using LAME encoder")
         print("[AudioSegmentUploader] 📂 Input: \(inputURL.path)")
         print("[AudioSegmentUploader] 📂 Output: \(outputURL.path)")
