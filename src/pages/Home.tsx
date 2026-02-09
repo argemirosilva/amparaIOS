@@ -240,10 +240,12 @@ export function HomePage({ onLogout }: HomePageProps) {
     // REMOVED: hasAllRequired check - let hybridAudioTrigger.start() handle permissions internally
     
     // Only start if not already capturing (prevents restart on navigation)
-    if (audioTrigger.isCapturing) {
-      console.log('[Home] ✅ Audio trigger already capturing, skipping auto-start');
-      return;
-    }
+    console.log('🔍 DEBUG: audioTrigger.isCapturing =', audioTrigger.isCapturing);
+    // TEMPORARILY DISABLED: This check is preventing start() from being called
+    // if (audioTrigger.isCapturing) {
+    //   console.log('[Home] ✅ Audio trigger already capturing, skipping auto-start');
+    //   return;
+    // }
     
     // HybridAudioTrigger will handle:
     // - Permission flow gates
