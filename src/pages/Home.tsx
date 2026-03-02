@@ -201,6 +201,9 @@ export function HomePage({ onLogout }: HomePageProps) {
     const timer = setTimeout(() => {
       const startConfig = {
         monitoringPeriods: validPeriods,
+        // FIX: Pass full week schedule so the native plugin can always derive today's
+        // periods correctly, even if the app stays in background past midnight.
+        periodosSemana: periodosSemana ?? undefined,
         sessionToken: getSessionToken() || undefined,
         refreshToken: getRefreshToken() || undefined,
         emailUsuario: getUserEmail() || undefined,
@@ -215,7 +218,7 @@ export function HomePage({ onLogout }: HomePageProps) {
       });
     }, 500);
     return () => clearTimeout(timer);
-  }, [isPermissionsLoading, toast, audioTrigger.isCapturing, validPeriods]);
+  }, [isPermissionsLoading, toast, audioTrigger.isCapturing, validPeriods, periodosSemana]);
 
   // Periodic check for monitoring period changes (every minute)
   // This ensures the app switches modes automatically when entering/exiting periods

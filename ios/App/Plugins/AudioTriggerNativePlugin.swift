@@ -96,7 +96,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private let panicMaxDuration: TimeInterval = 3600.0 // 60 minutes
     
     // Monitoring periods
+    // FIX: Store the full week schedule in addition to today's periods.
+    // When the app stays in background past midnight, monitoringPeriods (today-only) becomes stale.
+    // periodosSemana lets isWithinMonitoringPeriod() always derive today's periods at query time.
     private var monitoringPeriods: [[String: String]] = []
+    private var periodosSemana: [String: [[String: String]]] = [:]  // e.g. ["seg": [["inicio":"18:00","fim":"23:00"]]]
     
     // Continuous calibration
     private var continuousCalibrationEnabled = true
@@ -122,6 +126,21 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var uploader: AudioSegmentUploader?
     private var recordingBuffer: AVAudioPCMBuffer?
     private var stopReason: String = "manual" // Track why recording stopped
+
+    // FIX: Dedicated URLSession for status/monitoring reports.
+    // URLSession.shared is cancelled by iOS as soon as the app is suspended.
+    // Using URLSessionConfiguration.default with waitsForConnectivity=true ensures
+    // requests survive brief suspensions when called inside an active UIBackgroundTask.
+    private lazy var statusSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.allowsCellularAccess = true
+        config.allowsConstrainedNetworkAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
     
     // Audio format
     private let sampleRate: Double = 44100.0
@@ -132,8 +151,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private var backgroundTaskRenewalTimer: DispatchSourceTimer?
     private var appTransitionTaskID: UIBackgroundTaskIdentifier = .invalid
     
-    // Metrics update timer (UI-only, doesn't need background)
-    private var metricsTimer: Timer?
+    // Metrics update timer — must use DispatchSourceTimer so it keeps firing in background
+    // Timer.scheduledTimer is tied to RunLoop which iOS freezes when app enters background
+    private var metricsTimer: DispatchSourceTimer?
     private let metricsUpdateInterval: TimeInterval = 0.5 // 500ms (2x per second)
     
     // Audio interruption handling
@@ -249,6 +269,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 applyMonitoringPeriods(rawPeriods, source: "start(config)")
             } else {
                 print("[AudioTriggerNative-iOS] ⚠️ monitoringPeriods NOT found in start(config)")
+            }
+
+            // FIX: Store full week schedule if provided in start() so midnight transitions work
+            if let weekDict = config["periodosSemana"] as? [String: Any] {
+                applyPeriodosSemana(weekDict, source: "start(config)")
             }
         } else {
             // Fallback: check for credentials directly in call (old format)
@@ -523,7 +548,12 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         if let periodsArray = call.getArray("monitoringPeriods") {
             applyMonitoringPeriods(periodsArray, source: "updateConfig")
         }
-        
+
+        // FIX: Also store full week schedule when JS pushes periodos_semana via updateConfig
+        if let weekDict = call.getObject("periodosSemana") as? [String: Any] {
+            applyPeriodosSemana(weekDict, source: "updateConfig")
+        }
+
         call.resolve(["success": true])
     }
     
@@ -604,42 +634,83 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             print("[AudioTriggerNative-iOS] ⚠️ monitoringPeriods is empty after parsing - schedule checks will be treated as OUTSIDE WINDOW")
         }
     }
-    
+
+    /// Store the full week schedule received from the server or JS config.
+    /// Keys are Brazilian weekday abbreviations: "dom","seg","ter","qua","qui","sex","sab"
+    private func applyPeriodosSemana(_ weekDict: [String: Any], source: String) {
+        var parsed: [String: [[String: String]]] = [:]
+        let dayKeys = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"]
+        for key in dayKeys {
+            guard let dayArray = weekDict[key] as? [Any] else { continue }
+            var dayPeriods: [[String: String]] = []
+            for item in dayArray {
+                if let d = item as? [String: String], let i = d["inicio"], let f = d["fim"] {
+                    dayPeriods.append(["inicio": i, "fim": f])
+                } else if let d = item as? [String: Any], let i = d["inicio"] as? String, let f = d["fim"] as? String {
+                    dayPeriods.append(["inicio": i, "fim": f])
+                }
+            }
+            if !dayPeriods.isEmpty {
+                parsed[key] = dayPeriods
+            }
+        }
+        periodosSemana = parsed
+        print("[AudioTriggerNative-iOS] 📅 Updated periodosSemana from \(source): \(parsed.keys.joined(separator: ", "))")
+
+        // Also refresh today's monitoringPeriods so the running check is immediately consistent
+        let todayKey = todayWeekdayKey()
+        if let todayPeriods = parsed[todayKey] {
+            monitoringPeriods = todayPeriods
+            print("[AudioTriggerNative-iOS] 📅 Refreshed today's (\(todayKey)) monitoringPeriods: \(todayPeriods.count) period(s)")
+        }
+    }
+
+    /// Returns the Brazilian weekday abbreviation for today ("dom","seg","ter","qua","qui","sex","sab")
+    private func todayWeekdayKey() -> String {
+        // Calendar.weekday: 1=Sunday, 2=Monday, ..., 7=Saturday
+        let keys = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"]
+        let weekdayIndex = Calendar.current.component(.weekday, from: Date()) - 1 // 0-based
+        return keys[weekdayIndex]
+    }
+
     private func isWithinMonitoringPeriod() -> Bool {
-        // Fail-safe: without configured periods, treat as outside monitoring window.
-        guard !monitoringPeriods.isEmpty else {
+        // FIX: Always derive today's periods dynamically so the check stays correct
+        // after midnight without requiring a JS restart or config push.
+        //
+        // Priority:
+        //   1. periodosSemana[todayKey]  — full week schedule (most accurate, day-aware)
+        //   2. monitoringPeriods         — fallback: periods pushed by JS for "today" on start()
+        let todayKey = todayWeekdayKey()
+        let periodsToCheck: [[String: String]]
+        if !periodosSemana.isEmpty, let todayFromWeek = periodosSemana[todayKey] {
+            periodsToCheck = todayFromWeek
+        } else if !monitoringPeriods.isEmpty {
+            periodsToCheck = monitoringPeriods
+        } else {
+            // Fail-safe: no periods configured → treat as outside monitoring window
             return false
         }
-        
+
         let now = Date()
         let calendar = Calendar.current
         let currentHour = calendar.component(.hour, from: now)
         let currentMinute = calendar.component(.minute, from: now)
         let currentMinutes = currentHour * 60 + currentMinute
-        
-        // Check if within any period
-        for period in monitoringPeriods {
-            guard let inicioStr = period["inicio"],
-                  let fimStr = period["fim"] else {
-                continue
-            }
-            
-            // Parse "HH:MM" format
+
+        for period in periodsToCheck {
+            guard let inicioStr = period["inicio"], let fimStr = period["fim"] else { continue }
+
             let inicioComponents = inicioStr.split(separator: ":").compactMap { Int($0) }
-            let fimComponents = fimStr.split(separator: ":").compactMap { Int($0) }
-            
-            guard inicioComponents.count == 2, fimComponents.count == 2 else {
-                continue
-            }
-            
+            let fimComponents   = fimStr.split(separator: ":").compactMap { Int($0) }
+            guard inicioComponents.count == 2, fimComponents.count == 2 else { continue }
+
             let startMinutes = inicioComponents[0] * 60 + inicioComponents[1]
-            let endMinutes = fimComponents[0] * 60 + fimComponents[1]
-            
+            let endMinutes   = fimComponents[0]   * 60 + fimComponents[1]
+
             if currentMinutes >= startMinutes && currentMinutes < endMinutes {
                 return true
             }
         }
-        
         return false
     }
     
@@ -1591,8 +1662,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         print("[AudioTriggerNative-iOS] 📡 Sending request to: \(url.absoluteString)")
         print("[AudioTriggerNative-iOS] 📡 Request body: \(redactSensitiveJsonString(from: jsonData))")
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
+
+        // FIX: Use statusSession (not URLSession.shared) so the request survives background suspension
+        statusSession.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("[AudioTriggerNative-iOS] ❌ Failed to report status: \(error.localizedDescription)")
                 return
@@ -1656,8 +1728,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         print("[AudioTriggerNative-iOS] 📡 Sending monitoring status to: \(url.absoluteString)")
         print("[AudioTriggerNative-iOS] 📡 Request body: \(redactSensitiveJsonString(from: jsonData))")
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
+
+        // FIX: Use statusSession (not URLSession.shared) so the request survives background suspension
+        statusSession.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("[AudioTriggerNative-iOS] ❌ Failed to report monitoring status: \(error.localizedDescription)")
                 return
@@ -1744,21 +1817,25 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     private func startMetricsTimer() {
         // Stop existing timer if any
         stopMetricsTimer()
-        
-        // Create timer on main thread
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            self.metricsTimer = Timer.scheduledTimer(withTimeInterval: self.metricsUpdateInterval, repeats: true) { [weak self] _ in
-                self?.sendMetricsUpdate()
-            }
-            
-            print("[AudioTriggerNative-iOS] ⏱️ Metrics timer started (every \(self.metricsUpdateInterval)s)")
+
+        // FIX: Use DispatchSourceTimer instead of Timer.scheduledTimer.
+        // Timer.scheduledTimer is tied to the main RunLoop which iOS suspends when
+        // the app enters background, causing metrics updates (and any state logic
+        // inside sendMetricsUpdate) to silently stop.
+        // DispatchSourceTimer runs on a DispatchQueue and is NOT affected by RunLoop suspension.
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInteractive))
+        timer.schedule(deadline: .now() + metricsUpdateInterval, repeating: metricsUpdateInterval)
+        timer.setEventHandler { [weak self] in
+            self?.sendMetricsUpdate()
         }
+        timer.resume()
+        metricsTimer = timer
+
+        print("[AudioTriggerNative-iOS] ⏱️ Metrics timer started with DispatchSourceTimer (every \(metricsUpdateInterval)s) — works in background")
     }
     
     private func stopMetricsTimer() {
-        metricsTimer?.invalidate()
+        metricsTimer?.cancel()
         metricsTimer = nil
         print("[AudioTriggerNative-iOS] ⏹️ Metrics timer stopped")
     }
@@ -2407,8 +2484,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // Send request
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        // FIX: Use statusSession (not URLSession.shared) so the request survives background suspension
+        statusSession.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else {
                 completion(false)
                 return
@@ -2578,8 +2655,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // Send request (background-safe)
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        // FIX: Use statusSession (not URLSession.shared) so the ping survives background suspension
+        let task = statusSession.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
             
             if let error = error {
@@ -2974,7 +3051,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         print("[AudioTriggerNative-iOS] 🔄 syncConfigMobile request url: \(url.absoluteString)")
         print("[AudioTriggerNative-iOS] 🔄 syncConfigMobile request body: \(redactSensitiveJsonString(from: jsonData))")
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        // FIX: Use statusSession (not URLSession.shared) so the config sync survives background suspension
+        statusSession.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
                 print("[AudioTriggerNative-iOS] ❌ Config sync failed: \(error.localizedDescription)")
                 return
@@ -2989,8 +3067,16 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 if httpResponse.statusCode == 200, let data = data {
                     do {
                         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                            if let periodsArray = self?.extractMonitoringPeriodsFromSyncResponse(json),
-                               !periodsArray.isEmpty {
+                            // FIX: Store full week schedule so isWithinMonitoringPeriod() stays
+                            // correct after midnight without needing a JS push or app restart.
+                            if let periodosSemanaDict = json["periodos_semana"] as? [String: Any] {
+                                self?.applyPeriodosSemana(periodosSemanaDict, source: "syncConfigurationFromServer")
+                            } else if let monitoramento = json["monitoramento"] as? [String: Any],
+                                      let periodosSemanaDict = monitoramento["periodos_semana"] as? [String: Any] {
+                                self?.applyPeriodosSemana(periodosSemanaDict, source: "syncConfigurationFromServer(monitoramento)")
+                            } else if let periodsArray = self?.extractMonitoringPeriodsFromSyncResponse(json),
+                                      !periodsArray.isEmpty {
+                                // Fallback: only today's periods available
                                 self?.applyMonitoringPeriods(periodsArray, source: "syncConfigurationFromServer")
                             }
 
@@ -3171,8 +3257,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         print("[AudioTriggerNative-iOS] 📍🚀 Sending GPS to server: lat=\(location.coordinate.latitude), lon=\(location.coordinate.longitude), accuracy=\(location.horizontalAccuracy)m, battery=\(batteryLevel)%")
         
-        // Send request (background-safe)
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        // FIX: Use statusSession (not URLSession.shared) so the GPS update survives background suspension
+        let task = statusSession.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("[AudioTriggerNative-iOS] ❌ GPS send failed: \(error.localizedDescription)")
                 return
@@ -3350,7 +3436,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
 
         print("[AudioTriggerNative-iOS] 🧰 Recovery pingMobile request body: \(redactSensitiveJsonString(from: jsonData))")
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        // FIX: Use statusSession (not URLSession.shared) so the recovery ping survives background suspension
+        statusSession.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else {
                 completion(false)
                 return

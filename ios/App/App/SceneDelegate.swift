@@ -1,6 +1,6 @@
 import UIKit
 import Capacitor
-import AVFoundation
+// AVFoundation removed: audio session is managed exclusively by AudioTriggerNativePlugin
 
 /// Wrapper class to act as KVO observer for WKWebView's estimatedProgress.
 /// This prevents crashes when the system tries to remove observers during teardown.
@@ -80,13 +80,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidDisconnect(_ scene: UIScene) {
         removeProgressObserverIfNeeded()
 
-        print("[SceneDelegate] 🚨 Scene disconnecting – releasing audio session")
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            print("[SceneDelegate] ✅ Audio session deactivated on disconnect")
-        } catch {
-            print("[SceneDelegate] ⚠️ Could not deactivate audio session: \(error.localizedDescription)")
-        }
+        // FIX: Do NOT deactivate AVAudioSession here.
+        // sceneDidDisconnect is called when iOS decides to release the scene (e.g. low memory,
+        // system restart). Deactivating AVAudioSession at this point immediately kills background
+        // audio monitoring even though the app may still be alive via the "audio" background mode.
+        // AVAudioSession lifecycle is managed exclusively by AudioTriggerNativePlugin.
+        print("[SceneDelegate] Scene disconnected — audio session managed by AudioTriggerNativePlugin")
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) { }
