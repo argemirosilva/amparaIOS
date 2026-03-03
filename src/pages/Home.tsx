@@ -29,6 +29,7 @@ import { audioTriggerSingleton } from '@/services/audioTriggerSingleton';
 import { getMonitoringGateStatus } from '@/services/monitoringGateService';
 import { getSessionToken, getUserEmail } from '@/lib/api';
 import { getRefreshToken } from '@/services/sessionService';
+import { Capacitor } from '@capacitor/core';
 
 interface HomePageProps {
   onLogout: () => void;
@@ -305,7 +306,10 @@ export function HomePage({ onLogout }: HomePageProps) {
   const [showPanicPulse, setShowPanicPulse] = useState(false);
   const isRecordingEffective = recording.isRecording || appState.status === 'recording';
   const menuControlHeightPx = 40;
-  const controlsVerticalOffsetPx = Math.round(menuControlHeightPx * 1.5);
+  // No Android, descer os botões do header 2x a altura do botão menu
+  const controlsVerticalOffsetPx = Capacitor.getPlatform() === 'android'
+    ? 0
+    : Math.round(menuControlHeightPx * 1.5);
 
   const handleRecordToggle = async () => {
     if (isRecordLoading) return; // Prevent multiple clicks
@@ -424,7 +428,7 @@ export function HomePage({ onLogout }: HomePageProps) {
       />
       <header
         className="flex items-center justify-between px-4 pb-2 bg-transparent"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+        style={{ paddingTop: Capacitor.getPlatform() === 'android' ? '0.25rem' : 'calc(env(safe-area-inset-top) + 0.75rem)' }}
       >
 
         <div />
@@ -600,11 +604,10 @@ export function HomePage({ onLogout }: HomePageProps) {
                 onClick={handleRecordToggle}
                 disabled={panic.isActivating || panic.isSendingToServer || isRecordLoading}
                 aria-label={isRecordingEffective ? 'Parar gravação' : 'Iniciar gravação manual'}
-                className={`rounded-full w-14 h-14 p-0 border-0 ${
-                  isRecordingEffective
-                    ? 'bg-black hover:bg-black/90 text-white'
-                    : 'btn-primary-neon hover:opacity-90 text-white'
-                }`}
+                className={`rounded-full w-14 h-14 p-0 border-0 ${isRecordingEffective
+                  ? 'bg-black hover:bg-black/90 text-white'
+                  : 'btn-primary-neon hover:opacity-90 text-white'
+                  }`}
               >
                 {isRecordLoading ? (
                   '...'

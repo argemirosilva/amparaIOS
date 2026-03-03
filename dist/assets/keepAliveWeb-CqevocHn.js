@@ -1,1 +1,0 @@
-import{W as o}from"./index-D2SLqu1P.js";class s extends o{async start(e){return console.log("[KeepAlive] Web platform - no action needed (deviceId:",e.deviceId,")"),Promise.resolve()}async stop(){return console.log("[KeepAlive] Web platform - no action needed"),Promise.resolve()}}export{s as KeepAliveWeb};

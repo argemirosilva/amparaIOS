@@ -3,7 +3,7 @@
  * Shows detection proximity and monitoring period info in a unified component
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Ear, EarOff } from 'lucide-react';
@@ -89,6 +89,31 @@ export function AudioTriggerMeter({
 }: AudioTriggerMeterProps) {
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
+
+  // Contador de toques rápidos no mostrador para abrir a tela técnica de debug
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMeterTap = useCallback(() => {
+    tapCountRef.current += 1;
+
+    // Resetar timer anterior
+    if (tapTimerRef.current) {
+      clearTimeout(tapTimerRef.current);
+    }
+
+    // Se atingiu 5 toques, navegar para a tela de debug
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      navigate('/audio-trigger-debug');
+      return;
+    }
+
+    // Resetar contador após 2 segundos sem toques
+    tapTimerRef.current = setTimeout(() => {
+      tapCountRef.current = 0;
+    }, 2000);
+  }, [navigate]);
 
   // Debug: Log score changes
   useEffect(() => {
@@ -206,7 +231,7 @@ export function AudioTriggerMeter({
   return (
     <div className="flex flex-col items-center gap-2">
       {/* Circular meter */}
-      <div className="relative" style={{ width: size, height: size }}>
+      <div className="relative" style={{ width: size, height: size }} onClick={handleMeterTap}>
         <svg
           width={size}
           height={size}
