@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AMPARA</string>
+    <string name="title_activity_main">AMPARA</string>
+    <string name="package_name">tech.orizon.ampara</string>
+    <string name="custom_url_scheme">tech.orizon.ampara</string>
+</resources>

@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissões Necessárias -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.CAPTURE_AUDIO_OUTPUT" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <!-- MainActivity SEM intent-filter LAUNCHER (apenas os aliases terão) -->
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name="tech.orizon.ampara.MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true" />
+
+        <!-- Alias Padrão (Ampara Original) - Habilitado por padrão para instalação -->
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityAmpara"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_ampara"
+            android:roundIcon="@mipmap/ic_launcher_ampara"
+            android:label="Ampara"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Aliases Alternativos - DESABILITADOS por padrão -->
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityWorkout"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_workout"
+            android:roundIcon="@mipmap/ic_launcher_workout"
+            android:label="Treino Fitness"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivitySteps"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_steps"
+            android:roundIcon="@mipmap/ic_launcher_steps"
+            android:label="Contador de Passos"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityYoga"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_yoga"
+            android:roundIcon="@mipmap/ic_launcher_yoga"
+            android:label="Yoga e Meditacao"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityCycle"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_cycle"
+            android:roundIcon="@mipmap/ic_launcher_cycle"
+            android:label="Calendario Feminino"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityBeauty"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_beauty"
+            android:roundIcon="@mipmap/ic_launcher_beauty"
+            android:label="Beleza e Makeup"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityFashion"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_fashion"
+            android:roundIcon="@mipmap/ic_launcher_fashion"
+            android:label="Meu Guarda-Roupa"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityPuzzle"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_puzzle"
+            android:roundIcon="@mipmap/ic_launcher_puzzle"
+            android:label="Quebra-Cabeca"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityCards"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_cards"
+            android:roundIcon="@mipmap/ic_launcher_cards"
+            android:label="Jogo de Cartas"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="tech.orizon.ampara.MainActivityCasual"
+            android:targetActivity="tech.orizon.ampara.MainActivity"
+            android:icon="@mipmap/ic_launcher_casual"
+            android:roundIcon="@mipmap/ic_launcher_casual"
+            android:label="Jogo Casual"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Foreground Service for background operation -->
+        <receiver android:name="io.capawesome.capacitorjs.plugins.foregroundservice.NotificationActionBroadcastReceiver" />
+        <service
+            android:name="io.capawesome.capacitorjs.plugins.foregroundservice.AndroidForegroundService"
+            android:foregroundServiceType="location|microphone"
+            android:stopWithTask="false"
+            android:exported="false" />
+
+        <service
+            android:name="tech.orizon.ampara.KeepAliveService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location|specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep-alive service to ensure connectivity and system status reporting in Doze mode" />
+        </service>
+
+        <!-- AudioTrigger Service for background audio monitoring -->
+        <service
+            android:name="tech.orizon.ampara.AudioTriggerService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location|microphone"
+            android:stopWithTask="false" />
+
+        <!-- BroadcastReceiver for AlarmManager to wake up in Doze Mode -->
+        <receiver
+            android:name="tech.orizon.ampara.KeepAliveAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="tech.orizon.ampara.KEEPALIVE_ALARM" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+</manifest>
