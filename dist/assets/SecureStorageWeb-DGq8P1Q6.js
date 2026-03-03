@@ -1,0 +1,1 @@
+import{W as a}from"./index-D2SLqu1P.js";class c extends a{async set(e){localStorage.setItem(e.key,e.value)}async get(e){return{value:localStorage.getItem(e.key)}}async remove(e){localStorage.removeItem(e.key)}async clear(){localStorage.clear()}}export{c as SecureStorageWeb};
