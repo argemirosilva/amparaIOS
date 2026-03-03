@@ -2339,7 +2339,10 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func configureAudioSessionForCapture() throws {
         let audioSession = AVAudioSession.sharedInstance()
-        let options: AVAudioSession.CategoryOptions = [.allowBluetooth, .defaultToSpeaker, .mixWithOthers]
+        // .mixWithOthers: permite que outros apps (música, vídeos) continuem tocando
+        // .allowBluetooth: permite uso de fones Bluetooth
+        // Removido .defaultToSpeaker: forçava roteamento para alto-falante e podia interromper outros apps
+        let options: AVAudioSession.CategoryOptions = [.allowBluetooth, .mixWithOthers]
         try audioSession.setCategory(.playAndRecord, mode: .default, options: options)
         try audioSession.setActive(true)
     }
