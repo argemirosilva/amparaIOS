@@ -69,12 +69,12 @@ export function useRecording() {
           break;
 
         case 'nativeRecordingProgress':
-          // Update segments sent count
+          // Atualiza contagem de segmentos completados
           if (event.segmentIndex !== undefined && event.segmentIndex !== null) {
             const segIdx = event.segmentIndex as number;
             setState((prev) => ({
               ...prev,
-              segmentsSent: segIdx + 1,
+              segmentsSent: segIdx,
             }));
           }
           break;

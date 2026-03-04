@@ -10,7 +10,7 @@ export class AudioTriggerNativeWeb extends WebPlugin implements AudioTriggerNati
   private emailUsuario: string | null = null;
   private origemGravacao: string = 'botao_manual';
   private recordingStartTime: number = 0;
-  private segmentIndex: number = 0;
+  private segmentIndex: number = 1;
   private uploadInterval: ReturnType<typeof setInterval> | null = null;
 
   async start(): Promise<{ success: boolean; alreadyRunning?: boolean }> {
@@ -60,7 +60,7 @@ export class AudioTriggerNativeWeb extends WebPlugin implements AudioTriggerNati
       this.sessionToken = options?.sessionToken || null;
       this.emailUsuario = options?.emailUsuario || null;
       this.origemGravacao = options?.origemGravacao || 'botao_manual';
-      this.segmentIndex = 0;
+      this.segmentIndex = 1;
 
       // Request microphone permission
       console.log('[AudioTriggerNativeWeb] Requesting microphone access...');

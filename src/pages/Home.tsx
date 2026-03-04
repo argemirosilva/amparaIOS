@@ -541,12 +541,19 @@ export function HomePage({ onLogout }: HomePageProps) {
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`text-4xl font-mono font-bold ${panic.isPanicActive ? 'text-destructive' : 'text-destructive'}`}
+                className="flex items-end gap-2"
               >
-                {formatDuration(
-                  panic.isPanicActive
-                    ? panic.panicDuration
-                    : (recording.origemGravacao === 'botao_manual' ? recording.duration : 0)
+                <span className={`text-4xl font-mono font-bold ${panic.isPanicActive ? 'text-destructive' : 'text-destructive'}`}>
+                  {formatDuration(
+                    panic.isPanicActive
+                      ? panic.panicDuration
+                      : (recording.origemGravacao === 'botao_manual' ? recording.duration : 0)
+                  )}
+                </span>
+                {isRecordingEffective && !panic.isPanicActive && (
+                  <span className="text-xs font-mono text-success opacity-80 pb-1">
+                    ({recording.segmentsSent || Math.floor(recording.duration / 30) + 1})
+                  </span>
                 )}
               </motion.div>
             )}

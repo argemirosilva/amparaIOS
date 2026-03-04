@@ -24,7 +24,7 @@ class AudioSegmentUploader: NSObject {
     
     private var audioFile: AVAudioFile?
     private var audioFileURL: URL?
-    private var segmentIndex = 0
+    private var segmentIndex = 1
     private var sessionId: String
     private var sessionToken: String
     private var emailUsuario: String
@@ -241,7 +241,7 @@ class AudioSegmentUploader: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self = self else { return }
 
-            if self.segmentIndex == 0 && duration < self.minFirstSegmentDurationSeconds {
+            if self.segmentIndex == 1 && duration < self.minFirstSegmentDurationSeconds {
                 print("[AudioSegmentUploader] ⚠️ First segment duration \(Int(duration))s < \(Int(self.minFirstSegmentDurationSeconds))s - marking as noise and skipping upload")
                 try? FileManager.default.removeItem(at: url)
                 self.segmentIndex += 1

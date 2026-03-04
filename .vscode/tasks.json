@@ -1,0 +1,99 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Capacitor: Build Web",
+            "type": "shell",
+            "command": "npm run build",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Compila o projeto web (Vite build)"
+        },
+        {
+            "label": "Capacitor: Sync Android",
+            "type": "shell",
+            "command": "npx cap sync android",
+            "group": "build",
+            "dependsOn": "Capacitor: Build Web",
+            "problemMatcher": [],
+            "detail": "Sincroniza o build web com o projeto Android"
+        },
+        {
+            "label": "Capacitor: Run Android",
+            "type": "shell",
+            "command": "npx cap run android",
+            "group": "build",
+            "dependsOn": "Capacitor: Sync Android",
+            "problemMatcher": [],
+            "detail": "Build + instala + roda no dispositivo/emulador Android"
+        },
+        {
+            "label": "Capacitor: Run Android (sem build)",
+            "type": "shell",
+            "command": "npx cap run android",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Roda no Android usando o último build (sem recompilar web)"
+        },
+        {
+            "label": "Capacitor: Sync iOS",
+            "type": "shell",
+            "command": "npx cap sync ios",
+            "group": "build",
+            "dependsOn": "Capacitor: Build Web",
+            "problemMatcher": [],
+            "detail": "Sincroniza o build web com o projeto iOS"
+        },
+        {
+            "label": "Capacitor: Open Android Studio",
+            "type": "shell",
+            "command": "npx cap open android",
+            "group": "none",
+            "problemMatcher": [],
+            "detail": "Abre o projeto no Android Studio para debug nativo"
+        },
+        {
+            "label": "Capacitor: Open Xcode",
+            "type": "shell",
+            "command": "npx cap open ios",
+            "group": "none",
+            "problemMatcher": [],
+            "detail": "Abre o projeto no Xcode para debug nativo"
+        },
+        {
+            "label": "Dev: Servidor local",
+            "type": "shell",
+            "command": "npm run dev",
+            "group": "build",
+            "isBackground": true,
+            "problemMatcher": [],
+            "detail": "Inicia o servidor Vite para desenvolvimento web"
+        },
+        {
+            "label": "Logcat: Audio Upload",
+            "type": "shell",
+            "command": "adb logcat -s AudioUploader:* UploadQueue:* NativeRecorder:* AudioTriggerService:* AudioTriggerPlugin:*",
+            "group": "test",
+            "isBackground": true,
+            "problemMatcher": [],
+            "detail": "Monitora logs de gravação e upload de áudio no Android"
+        },
+        {
+            "label": "Logcat: Tudo do App",
+            "type": "shell",
+            "command": "adb logcat | findstr /i \"AudioTrigger\\|AudioUploader\\|UploadQueue\\|NativeRecorder\\|Capacitor\"",
+            "group": "test",
+            "isBackground": true,
+            "problemMatcher": [],
+            "detail": "Monitora todos os logs relevantes do app Ampara"
+        },
+        {
+            "label": "Logcat: Limpar",
+            "type": "shell",
+            "command": "adb logcat -c",
+            "group": "test",
+            "problemMatcher": [],
+            "detail": "Limpa o buffer do Logcat"
+        }
+    ]
+}
