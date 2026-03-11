@@ -63,6 +63,14 @@ export interface AudioTriggerEvent {
   timestamp: number;
 }
 
-export const AudioTriggerNative = registerPlugin<AudioTriggerNativePlugin>('AudioTriggerNative', {
+export interface PipelineDiagnostics {
+  pipeline?: string;
+  enrollment?: string;
+  hasStaleTemplates?: boolean;
+}
+
+export const AudioTriggerNative = registerPlugin<AudioTriggerNativePlugin & {
+  getPipelineDiagnostics(): Promise<PipelineDiagnostics>;
+}>('AudioTriggerNative', {
   web: () => import('../plugins/audioTriggerNativeWeb').then(m => new m.AudioTriggerNativeWeb()),
 });

@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Radio, MapPin, Navigation, Crosshair, Settings2 } from 'lucide-react';
+import { ArrowLeft, Radio, MapPin, Navigation, Crosshair, Settings2, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAudioTriggerSingleton } from '@/hooks/useAudioTriggerSingleton';
@@ -127,6 +127,21 @@ export function AudioTriggerDebugPage() {
 
   // LOGS ASR LOCAIS
   const [asrLogs, setAsrLogs] = useState<{ id: string; phraseId: string; confidence: number; time: Date; phraseType: string }[]>([]);
+  const [diagnostics, setDiagnostics] = useState<string | null>(null);
+
+  const fetchDiagnostics = async () => {
+    try {
+      const result = await AudioTriggerNative.getPipelineDiagnostics();
+      if (result && result.enrollment) {
+        setDiagnostics(result.enrollment);
+      } else {
+        setDiagnostics('Sem dados ASR registrados no serviço.');
+      }
+    } catch (e) {
+      console.log('Erro ao buscar diagnosticos', e);
+      setDiagnostics('Serviço precisa estar Ativo para inspecionar!');
+    }
+  };
 
   // Carregar os eventos da Sessão Singleton que já aconteceram (histórico) e escutar novos
   useEffect(() => {
@@ -553,6 +568,20 @@ export function AudioTriggerDebugPage() {
             </div>
 
             {/* Box: Detecções ASR (Reconhecimento de Palavras CHAVE) */}
+            <div className="bg-gray-900/60 rounded-2xl p-4 border border-gray-800 space-y-3">
+              <div className="flex justify-between items-center pb-2 border-b border-gray-800">
+                <span className="text-xs text-gray-500 uppercase tracking-wider">Palavras Cadastradas (Gravação)</span>
+                <button onClick={fetchDiagnostics} className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors">
+                  <RefreshCw className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+              </div>
+              <div className="bg-gray-950/50 p-2.5 rounded-lg border border-gray-800/50">
+                <span className="text-[10px] font-mono text-purple-400/90 whitespace-pre-wrap">
+                  {diagnostics ?? 'Carregando banco de Voz...'}
+                </span>
+              </div>
+            </div>
+
             <div className="bg-gray-900/60 rounded-2xl p-4 border border-gray-800 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500 uppercase tracking-wider">Detecções ASR / IA</span>
