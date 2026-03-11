@@ -94,8 +94,8 @@ public class ScoringConfig {
     public int enrollMaxDurationMs = 5000;
     /** DTW máxima intra-amostras (consistência - AUMENTADO PARA NÃO FALHAR TANTO) */
     public double enrollConsistencyThreshold = 120.0;
-    /** DTW mínima inter-frases operacionais (conflito - DIMINUIDO PARA NÃO ACUSAR CONFLITO) */
-    public double enrollDivergenceThreshold = 15.0;
+    /** DTW mínima inter-frases operacionais (conflito - DIMINUIDO AO EXTREMO PARA PERMITIR 'INICIAR GRAVACAO' E 'PARAR GRAVACAO') */
+    public double enrollDivergenceThreshold = 2.0;
 
     /**
      * Construtor com valores padrão e vocabulário genérico
