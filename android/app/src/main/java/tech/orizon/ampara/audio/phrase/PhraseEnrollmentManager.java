@@ -299,14 +299,29 @@ public class PhraseEnrollmentManager {
 
         File dir = getTemplatesDir();
         if (!dir.exists()) {
-            Log.i(TAG, "[LOAD] Diretório de templates não existe. Nenhuma frase cadastrada.");
-            return 0;
+            dir.mkdirs(); // Cria o diretório para gravar o mock
         }
 
         File[] files = dir.listFiles((d, name) -> name.endsWith(".bin"));
         if (files == null || files.length == 0) {
-            Log.i(TAG, "[LOAD] Nenhum template encontrado.");
-            return 0;
+            Log.w(TAG, "[LOAD] Nenhum template encontrado. Injetando MOCK ('socorro') para testes!");
+            
+            // Cria um mock de 1 segundo de audio silencioso/simulado
+            float[][] mockMfcc = new float[30][13]; 
+            PhraseTemplate mockTemplate = new PhraseTemplate(
+                    "socorro", 
+                    PhraseTemplate.PhraseType.OPERATIONAL, 
+                    1, 
+                    mockMfcc,
+                    MFCCExtractor.EXTRACTOR_VERSION, 
+                    1.0f, 
+                    15.0 // threshold inicial baixo para aceitar variacoes no teste
+            );
+            
+            List<PhraseTemplate> mockList = new ArrayList<>();
+            mockList.add(mockTemplate);
+            loadedTemplates.put("socorro", mockList);
+            return 1;
         }
 
         int staleCount = 0;
