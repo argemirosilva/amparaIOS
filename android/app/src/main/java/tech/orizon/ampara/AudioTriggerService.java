@@ -178,7 +178,7 @@ public class AudioTriggerService extends Service {
             @Override
             public void onStartRecording(String reason) {
                 Log.i(TAG, "[ASR-TRIGGER] Iniciando gravação por comando de voz: " + reason);
-                Intent intent = new Intent(context, AudioTriggerService.class);
+                Intent intent = new Intent(AudioTriggerService.this, AudioTriggerService.class);
                 intent.setAction("START_RECORDING");
                 intent.putExtra("origemGravacao", "comando_voz");
                 startService(intent);
@@ -187,7 +187,7 @@ public class AudioTriggerService extends Service {
             @Override
             public void onStopRecording(String reason) {
                 Log.i(TAG, "[ASR-TRIGGER] Parando gravação por comando de voz: " + reason);
-                Intent intent = new Intent(context, AudioTriggerService.class);
+                Intent intent = new Intent(AudioTriggerService.this, AudioTriggerService.class);
                 intent.setAction("STOP_RECORDING");
                 startService(intent);
             }
@@ -195,7 +195,7 @@ public class AudioTriggerService extends Service {
             @Override
             public void onStartPanic(String reason) {
                 Log.i(TAG, "[ASR-TRIGGER] Iniciando PANICO por comando de voz: " + reason);
-                Intent intent = new Intent(context, AudioTriggerService.class);
+                Intent intent = new Intent(AudioTriggerService.this, AudioTriggerService.class);
                 intent.setAction("PANIC_ACTIVATED");
                 intent.putExtra("activationType", "comando_voz");
                 intent.putExtra("protocolNumber", "ASR_" + System.currentTimeMillis());
@@ -205,7 +205,7 @@ public class AudioTriggerService extends Service {
             @Override
             public void onCancelPanic(String reason) {
                 Log.i(TAG, "[ASR-TRIGGER] Cancelando PANICO por comando de voz: " + reason);
-                Intent intent = new Intent(context, AudioTriggerService.class);
+                Intent intent = new Intent(AudioTriggerService.this, AudioTriggerService.class);
                 intent.setAction("PANIC_DEACTIVATED");
                 intent.putExtra("cancelType", "comando_voz_cancel");
                 startService(intent);
