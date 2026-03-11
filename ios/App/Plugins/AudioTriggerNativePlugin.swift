@@ -25,6 +25,15 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateConfig", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getMetrics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startEnrollment", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addEnrollmentSample", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "finishEnrollment", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "cancelEnrollment", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removePhrase", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPipelineDiagnostics", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setNotificationPreference", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getNotificationPreference", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getDeviceId", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: - Properties
@@ -191,6 +200,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // Countdown timer - updates remaining recording time for UI
     private var countdownTimer: DispatchSourceTimer?
     private let countdownUpdateInterval: TimeInterval = 1.0 // Update every 1 second
+
+    // ========== Pipeline Híbrido (SPEC v3) ==========
+    private let pipelineScoringConfig = ScoringConfig()
+    private lazy var phraseEnrollmentManager = PhraseEnrollmentManager(config: pipelineScoringConfig)
+    private lazy var pipelineController = PipelineController(config: pipelineScoringConfig, enrollmentManager: phraseEnrollmentManager)
 
     // MARK: - Capacitor Methods
 
@@ -798,6 +812,9 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
         
         print("[AudioTriggerNative-iOS] ✅ Monitoring started (calibrating...) - NOT recording")
         print("[AudioTriggerNative-iOS] 📊 Metrics timer should now be sending audioMetrics every 0.5s")
+
+        // Pipeline híbrido: carregar templates existentes
+        phraseEnrollmentManager.loadAllTemplates()
     }
     
     private func stopMonitoring() {
@@ -1285,6 +1302,8 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
             // Fight detection (if densities exceed thresholds)
             if speechDensity >= speechDensityMin && loudDensity >= loudDensityMin {
                 detectFight(score: discussionScore)
+                // Pipeline híbrido: trigger acústico
+                pipelineController.onAcousticTrigger(speechDensity: speechDensity, reason: "discussion_detected")
                 return
             }
         }
@@ -3559,5 +3578,108 @@ extension AudioTriggerNativePlugin: CLLocationManagerDelegate {
         @unknown default:
             print("[AudioTriggerNative-iOS] 🔐 Status: Unknown (\(status.rawValue))")
         }
+    }
+
+    // MARK: - Pipeline Híbrido — Enrollment Methods
+
+    @objc func startEnrollment(_ call: CAPPluginCall) {
+        guard let phraseId = call.getString("phraseId"),
+              let typeStr = call.getString("type"),
+              let type = PhraseTemplate.PhraseType(rawValue: typeStr) else {
+            call.reject("phraseId e type são obrigatórios")
+            return
+        }
+        let result = phraseEnrollmentManager.startEnrollment(phraseId: phraseId, type: type)
+        call.resolve(["success": result.success, "message": result.message])
+    }
+
+    @objc func addEnrollmentSample(_ call: CAPPluginCall) {
+        let durationMs = call.getInt("durationMs") ?? 3000
+        let durationSec = Double(durationMs) / 1000.0
+        let sampleCount = Int(16000.0 * durationSec)
+
+        // Gravar áudio via engine atual
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self, let engine = self.audioEngine else {
+                DispatchQueue.main.async {
+                    call.reject("Serviço de áudio não disponível")
+                }
+                return
+            }
+
+            // Capturar áudio por durationSec segundos
+            var capturedSamples = [Int16]()
+            let semaphore = DispatchSemaphore(value: 0)
+            let inputNode = engine.inputNode
+            let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
+
+            // Usar um tap temporário para capturar áudio 16kHz
+            let tempNode = AVAudioMixerNode()
+            engine.attach(tempNode)
+            engine.connect(inputNode, to: tempNode, format: inputNode.outputFormat(forBus: 0))
+
+            tempNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { buffer, _ in
+                guard let channelData = buffer.floatChannelData?[0] else { return }
+                let frameCount = Int(buffer.frameLength)
+                for i in 0..<frameCount {
+                    if capturedSamples.count < sampleCount {
+                        capturedSamples.append(Int16(max(-1, min(1, channelData[i])) * 32767))
+                    }
+                }
+                if capturedSamples.count >= sampleCount {
+                    semaphore.signal()
+                }
+            }
+
+            // Esperar a captura
+            let timeout = DispatchTime.now() + durationSec + 2.0
+            _ = semaphore.wait(timeout: timeout)
+
+            // Limpar tap temporário
+            tempNode.removeTap(onBus: 0)
+            engine.disconnectNodeInput(tempNode)
+            engine.detach(tempNode)
+
+            // Processar amostra
+            let enrollResult = self.phraseEnrollmentManager.addSample(
+                samples: capturedSamples, offset: 0, length: capturedSamples.count)
+
+            DispatchQueue.main.async {
+                call.resolve([
+                    "success": enrollResult.success,
+                    "message": enrollResult.message,
+                    "currentSamples": enrollResult.currentSamples,
+                    "minRequired": enrollResult.minRequired,
+                    "maxAllowed": enrollResult.maxAllowed
+                ])
+            }
+        }
+    }
+
+    @objc func finishEnrollment(_ call: CAPPluginCall) {
+        let result = phraseEnrollmentManager.finishEnrollment()
+        call.resolve(["success": result.success, "message": result.message])
+    }
+
+    @objc func cancelEnrollment(_ call: CAPPluginCall) {
+        phraseEnrollmentManager.cancelEnrollment()
+        call.resolve(["success": true])
+    }
+
+    @objc func removePhrase(_ call: CAPPluginCall) {
+        guard let phraseId = call.getString("phraseId") else {
+            call.reject("phraseId é obrigatório")
+            return
+        }
+        let removed = phraseEnrollmentManager.removePhrase(phraseId: phraseId)
+        call.resolve(["success": removed])
+    }
+
+    @objc func getPipelineDiagnostics(_ call: CAPPluginCall) {
+        call.resolve([
+            "pipeline": pipelineController.getDiagnostics(),
+            "enrollment": phraseEnrollmentManager.getDiagnostics(),
+            "hasStaleTemplates": phraseEnrollmentManager.hasStaleTemplates()
+        ])
     }
 }

@@ -47,6 +47,11 @@ export interface AudioTriggerNativePlugin {
   updateConfig(options: { config: any }): Promise<{ success: boolean }>;
 
   /**
+   * Atualizar parâmetros individuais de detecção em tempo real (painel de tuning)
+   */
+  updateTuning(params: Record<string, number>): Promise<{ success: boolean }>;
+
+  /**
    * Obter status atual do serviço nativo (dispara broadcast de calibrationStatus)
    */
   getStatus(): Promise<{ success: boolean }>;
@@ -101,27 +106,96 @@ export interface AudioTriggerNativePlugin {
    */
   getNotificationPreference(): Promise<{ enabled: boolean }>;
 
+  // ========== Pipeline Híbrido — Enrollment (SPEC v3) ==========
+
+  /**
+   * Iniciar enrollment de uma frase personalizada
+   */
+  startEnrollment(options: {
+    phraseId: string;
+    type: 'OPERATIONAL' | 'CONTEXTUAL' | 'GENERIC';
+  }): Promise<{ success: boolean; message: string }>;
+
+  /**
+   * Gravar e adicionar amostra de áudio ao enrollment em andamento
+   */
+  addEnrollmentSample(options?: {
+    durationMs?: number;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    currentSamples: number;
+    minRequired: number;
+    maxAllowed: number;
+  }>;
+
+  /**
+   * Finalizar enrollment: valida consistência, calcula thresholds, persiste
+   */
+  finishEnrollment(): Promise<{ success: boolean; message: string }>;
+
+  /**
+   * Cancelar enrollment em andamento
+   */
+  cancelEnrollment(): Promise<{ success: boolean }>;
+
+  /**
+   * Remover frase cadastrada
+   */
+  removePhrase(options: { phraseId: string }): Promise<{ success: boolean }>;
+
+  /**
+   * Obter diagnósticos do pipeline e enrollment
+   */
+  getPipelineDiagnostics(): Promise<{
+    pipeline?: string;
+    enrollment?: string;
+    hasStaleTemplates?: boolean;
+  }>;
+
   /**
    * Remove all listeners
    */
   removeAllListeners(): Promise<void>;
 }
 
-export interface AudioTriggerEvent {
-  event: 'discussionDetected' | 'discussionEnded' | 'nativeRecordingStarted' | 'nativeRecordingStopped' | 'nativeRecordingProgress' | 'nativeUploadProgress' | 'fgsNotEligible' | 'calibrationStatus' | 'recordingState' | 'audioMetrics';
-  reason?: string;
-  sessionId?: string;
+// Extensão nativa
+export interface NativeRecordingStartedEvent {
+  event: 'nativeRecordingStarted';
+  sessionId: string;
   origemGravacao?: string;
-  startedAt?: number;
-  segmentIndex?: number;
-  pending?: number;
-  success?: number;
-  failure?: number;
-  isCalibrated?: boolean;
-  isRecording?: boolean;
-  timestamp: number;
-  [key: string]: unknown;
+  startedAt: number;
 }
+export interface NativeRecordingStoppedEvent {
+  event: 'nativeRecordingStopped';
+  sessionId: string;
+}
+export interface PhraseDetectedEvent {
+  event: 'phraseDetected';
+  phraseId: string;
+  confidence: number;
+  phraseType: string;
+}
+
+export type AudioTriggerEvent =
+  | {
+      event: 'discussionDetected' | 'discussionEnded' | 'nativeRecordingProgress' | 'nativeUploadProgress' | 'fgsNotEligible' | 'calibrationStatus' | 'recordingState' | 'audioMetrics';
+      reason?: string;
+      sessionId?: string;
+      origemGravacao?: string;
+      startedAt?: number;
+      segmentIndex?: number;
+      pending?: number;
+      success?: number;
+      failure?: number;
+      isCalibrated?: boolean;
+      isRecording?: boolean;
+      timestamp: number;
+      [key: string]: unknown;
+    }
+  | NativeRecordingStartedEvent
+  | NativeRecordingStoppedEvent
+  | PhraseDetectedEvent;
 
 export const AudioTriggerNative = registerPlugin<AudioTriggerNativePlugin>('AudioTriggerNative', {
   web: () => import('./audioTriggerNativeWeb').then(m => new m.AudioTriggerNativeWeb()),

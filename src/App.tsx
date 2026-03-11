@@ -24,6 +24,7 @@ import { AudioTriggerDebugPage } from "./pages/AudioTriggerDebug";
 import IconSelector from "./pages/IconSelector";
 import AboutPage from "./pages/About";
 import SettingsPage from "./pages/Settings";
+import PhraseEnrollmentPage from "./pages/PhraseEnrollment";
 import NotFound from "./pages/NotFound";
 import { PanicProvider } from "./contexts/PanicContext";
 
@@ -79,7 +80,7 @@ const App = () => {
   useEffect(() => {
     if (authState === true && !servicesInitialized) {
       console.log('[App] User authenticated, initializing background services...');
-      
+
       const initServices = async () => {
         try {
           // Initialize config service (loads from cache immediately)
@@ -87,7 +88,7 @@ const App = () => {
           console.log('[App][SYNC_CONFIG] ######## Forcing JS config sync after initializeConfigService ########');
           const forcedSyncOk = await forceSyncConfig();
           console.log('[App][SYNC_CONFIG] ######## forceSyncConfig startup result ########', forcedSyncOk ? 'SUCCESS' : 'FAILED');
-          
+
           // Start KeepAlive service if not already running (Android only)
           if (Capacitor.getPlatform() === 'android') {
             try {
@@ -95,7 +96,7 @@ const App = () => {
               console.log('[App] 🔍 Checking permissions before starting KeepAlive...');
               const permissions = await checkPermissions();
               console.log('[App] Permission status:', permissions);
-              
+
               // Only start KeepAlive if location permission is granted
               // (KeepAliveService uses FOREGROUND_SERVICE_TYPE_LOCATION)
               if (permissions.location === 'granted') {
@@ -111,19 +112,19 @@ const App = () => {
               console.error('[App] ❌ Error starting KeepAlive service:', error);
             }
           }
-          
+
           setServicesInitialized(true);
           console.log('[App] Background services initialized');
         } catch (error) {
           console.error('[App] Failed to initialize background services:', error);
         }
       };
-      
+
       initServices();
     } else if (authState === false && servicesInitialized) {
       // User logged out, stop services
       console.log('[App] User logged out, stopping background services...');
-      
+
       const stopServices = async () => {
         try {
           if (Capacitor.getPlatform() === 'android') {
@@ -137,14 +138,14 @@ const App = () => {
             await AudioTriggerNative.stop();
             console.log('[App] AudioTriggerNative stopped, microphone released');
           }
-          
+
           setServicesInitialized(false);
         } catch (error) {
           console.error('[App] Error stopping services:', error);
           setServicesInitialized(false);
         }
       };
-      
+
       stopServices();
     }
   }, [authState, servicesInitialized]);
@@ -156,14 +157,14 @@ const App = () => {
         console.log('[App] App became visible, reloading session...');
         const authenticated = await reloadSession();
         console.log('[App] Reload result:', authenticated, 'Current state:', authState);
-        
+
         // Always update state to force re-render, even if value seems the same
         // This handles cases where Android killed and restarted the WebView
         console.log('[App] Force updating auth state to:', authenticated);
         setAuthState(authenticated);
       }
     };
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
@@ -173,17 +174,17 @@ const App = () => {
   // Listen for session expiration from Native (KeepAliveService)
   useEffect(() => {
     let nativeListener: PluginListenerHandle | null = null;
-    
+
     const setupNativeListener = async () => {
       try {
         nativeListener = await SessionExpiredListener.addListener('sessionExpired', async (data) => {
           console.error('[App] Session expired event from Native:', data);
-          
+
           // Try to refresh token first
           console.log('[App] Attempting to refresh token...');
           const { refreshAccessToken } = await import('@/services/tokenRefreshService');
           const refreshed = await refreshAccessToken();
-          
+
           if (refreshed) {
             console.log('[App] Token refreshed successfully, session restored');
           } else {
@@ -196,9 +197,9 @@ const App = () => {
         console.error('[App] Failed to register native session expired listener:', error);
       }
     };
-    
+
     setupNativeListener();
-    
+
     return () => {
       if (nativeListener) {
         nativeListener.remove();
@@ -209,7 +210,7 @@ const App = () => {
   // Listen for token refresh from Native (AudioTriggerNative)
   useEffect(() => {
     let tokenListener: PluginListenerHandle | null = null;
-    
+
     const setupTokenListener = async () => {
       try {
         tokenListener = await AudioTriggerNative.addListener('audioTriggerEvent', async (event: any) => {
@@ -224,19 +225,19 @@ const App = () => {
           // Check if this is a tokensRefreshed event
           if (event.event === 'tokensRefreshed') {
             console.log('[App] Tokens refreshed by Native, updating session service...');
-            
+
             const { setSessionToken, setRefreshToken } = await import('@/services/sessionService');
-            
+
             if (event.access_token) {
               await setSessionToken(event.access_token);
               console.log('[App] Access token updated in session service');
             }
-            
+
             if (event.refresh_token) {
               await setRefreshToken(event.refresh_token);
               console.log('[App] Refresh token updated in session service');
             }
-            
+
             console.log('[App] Session tokens synchronized with Native');
           }
 
@@ -253,9 +254,9 @@ const App = () => {
         console.error('[App] Failed to register native token refresh listener:', error);
       }
     };
-    
+
     setupTokenListener();
-    
+
     return () => {
       if (tokenListener) {
         tokenListener.remove();
@@ -308,7 +309,7 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
-            {!authState ? (
+          {!authState ? (
             <Routes>
               <Route path="/" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
@@ -327,6 +328,7 @@ const App = () => {
                 <Route path="/icon-selector" element={<IconSelector />} />
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/phrase-enrollment" element={<PhraseEnrollmentPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </PanicProvider>

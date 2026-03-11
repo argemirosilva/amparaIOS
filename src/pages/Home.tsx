@@ -584,7 +584,7 @@ export function HomePage({ onLogout }: HomePageProps) {
                   {formatDuration(
                     panic.isPanicActive
                       ? panic.panicDuration
-                      : (recording.origemGravacao === 'botao_manual' ? recording.duration : 0)
+                      : recording.duration
                   )}
                 </span>
                 {isRecordingEffective && !panic.isPanicActive && (

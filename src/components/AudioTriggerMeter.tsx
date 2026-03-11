@@ -273,9 +273,7 @@ export function AudioTriggerMeter({
                 strokeDashoffset: { duration: 0.5, ease: 'easeOut' },
                 stroke: { duration: 0.3 },
               }}
-              style={{
-                filter: `drop-shadow(0 0 6px ${strokeColor})`,
-              }}
+              style={{}}
             />
           )}
         </svg>

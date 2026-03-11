@@ -3,8 +3,9 @@
  * Core types for audio trigger detection system
  */
 
-// Estados da máquina de estados
-export type TriggerState = 'IDLE' | 'PRE_TRIGGER' | 'RECORDING' | 'COOLDOWN';
+// Estados da máquina de estados (inclui estados nativos do Java)
+export type TriggerState = 'IDLE' | 'PRE_TRIGGER' | 'RECORDING' | 'COOLDOWN'
+  | 'MONITORING' | 'CALIBRATING' | 'DISCUSSION_DETECTED' | 'RECORDING_STARTED' | 'DISCUSSION_ENDING';
 
 // Modos de processamento (para economia de bateria)
 export type ProcessingMode = 'FULL' | 'LIGHT';
@@ -97,6 +98,26 @@ export interface AudioTriggerMetrics {
   recordingDuration: number;
   state: TriggerState;
   isNoisy: boolean; // Ambiente muito ruidoso - detecção comprometida
+  // Dados de silêncio nativos (opcionais, para tela técnica)
+  isSilent?: boolean;
+  silenceDurationMs?: number;
+  silenceTimeoutMs?: number;
+  silenceThresholdDb?: number;
+  isNativeRecording?: boolean;
+  // Timers e contadores do DiscussionDetector (opcionais, para tela técnica)
+  timeInStateMs?: number;
+  continuousSilenceMs?: number;
+  isManualRecording?: boolean;
+  startHoldSeconds?: number;
+  endHoldSeconds?: number;
+  silenceDecaySeconds?: number;
+  cooldownSeconds?: number;
+  speechDensityMin?: number;
+  loudDensityMin?: number;
+  speechDensityEnd?: number;
+  loudDensityEnd?: number;
+  rmsAvg4s?: number;
+  zcrAvg4s?: number;
 }
 
 // Configuração unificada

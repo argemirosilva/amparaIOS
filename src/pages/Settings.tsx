@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Lock, Calendar, Eye, EyeOff, Bell } from 'lucide-react';
+import { ArrowLeft, Lock, Calendar, Eye, EyeOff, Bell, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -529,6 +529,29 @@ export default function SettingsPage() {
               />
             </button>
           </div>
+        </motion.div>
+
+        {/* Monitoring Periods Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="card-glass-dark rounded-2xl p-6"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Mic className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Frases de Segurança</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Cadastre frases de voz para controlar gravação, pânico e alertas de risco.
+          </p>
+          <Button
+            className="w-full rounded-xl bg-black hover:bg-black/90 text-white"
+            onClick={() => navigate('/phrase-enrollment')}
+          >
+            <Mic className="h-4 w-4 mr-2" />
+            Gerenciar Frases
+          </Button>
         </motion.div>
 
         {/* Monitoring Periods Section */}

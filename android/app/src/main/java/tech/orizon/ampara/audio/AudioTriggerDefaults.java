@@ -24,15 +24,15 @@ public class AudioTriggerDefaults {
         config.aggregationMs = 1000;
 
         // Detection thresholds (FIXED - never from API)
-        config.loudDeltaDb = 24.0;
-        config.vadDeltaDb = 10.0;
-        config.speechDensityMin = 0.75;
-        config.loudDensityMin = 0.50;
+        config.loudDeltaDb = 10.0;
+        config.vadDeltaDb = 8.0;
+        config.speechDensityMin = 0.35;
+        config.loudDensityMin = 0.25;
 
         // Timing windows
-        config.discussionWindowSeconds = 15;
+        config.discussionWindowSeconds = 10;
         config.preTriggerSeconds = 5;
-        config.startHoldSeconds = 12;
+        config.startHoldSeconds = 6;
         config.endHoldSeconds = 60;
         config.cooldownSeconds = 60;
 
@@ -43,7 +43,7 @@ public class AudioTriggerDefaults {
         config.turnTakingMin = 10;
 
         // End detection
-        config.speechDensityEnd = 0.2;
+        config.speechDensityEnd = 0.25;
         config.loudDensityEnd = 0.09;
         config.silenceDecaySeconds = 10;
         config.silenceDecayRate = 0.5;

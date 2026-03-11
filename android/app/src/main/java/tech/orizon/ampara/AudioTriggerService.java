@@ -38,6 +38,10 @@ import tech.orizon.ampara.audio.LocationManager;
 import tech.orizon.ampara.audio.SilenceDetector;
 import tech.orizon.ampara.audio.UploadQueue;
 
+import tech.orizon.ampara.audio.phrase.PipelineController;
+import tech.orizon.ampara.audio.phrase.PhraseEnrollmentManager;
+import tech.orizon.ampara.audio.phrase.ScoringConfig;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,6 +56,9 @@ public class AudioTriggerService extends Service {
     private static final int NOTIFICATION_ID = 1001;
     // IDs de notificações de eventos começam em 2000 e incrementam
     private int eventNotificationId = 2000;
+
+    // Referência estática para acesso pelo plugin
+    private static AudioTriggerService instance;
 
     // Trilha 1: segurança de energia/retry
     private static final long WAKELOCK_TIMEOUT_MS = 2 * 60 * 1000L; // 2 min
@@ -86,6 +93,24 @@ public class AudioTriggerService extends Service {
     private PanicManager panicManager;
     private ConnectivityManager.NetworkCallback networkCallback;
 
+    // Pipeline híbrido de detecção (SPEC v3)
+    private PipelineController pipelineController;
+    private PhraseEnrollmentManager phraseEnrollmentManager;
+    private ScoringConfig scoringConfig;
+
+    // Getters estáticos para acesso pelo plugin Capacitor
+    public static AudioTriggerService getInstance() {
+        return instance;
+    }
+
+    public PhraseEnrollmentManager getPhraseEnrollmentManager() {
+        return phraseEnrollmentManager;
+    }
+
+    public PipelineController getPipelineController() {
+        return pipelineController;
+    }
+
     private String sessionToken;
     private String emailUsuario;
     private String deviceId;
@@ -110,7 +135,8 @@ public class AudioTriggerService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "AudioTriggerService created - Build: 2026-02-23 19:55");
+        instance = this;
+        Log.d(TAG, "AudioTriggerService created - Build: 2026-03-06 22:00");
 
         // Check RECORD_AUDIO permission before starting foreground service
         if (ContextCompat.checkSelfPermission(this,
@@ -140,6 +166,61 @@ public class AudioTriggerService extends Service {
         silenceDetector = new SilenceDetector();
         uploadQueue = new UploadQueue(this, uploader);
         recordingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+        // Inicializar pipeline híbrido (SPEC v3)
+        scoringConfig = new ScoringConfig();
+        phraseEnrollmentManager = new PhraseEnrollmentManager(this, scoringConfig);
+        int phrasesLoaded = phraseEnrollmentManager.loadAllTemplates();
+        pipelineController = new PipelineController(this, scoringConfig, phraseEnrollmentManager);
+        
+        // Conectar o Pipeline de ASR (Keyword Spotting) com o Capacitor/React
+        pipelineController.setActionListener(new PipelineController.PipelineActionListener() {
+            @Override
+            public void onStartRecording(String reason) {
+                // Já tratado via detector ou intenção
+            }
+
+            @Override
+            public void onStopRecording(String reason) {
+                 // Já tratado
+            }
+
+            @Override
+            public void onStartPanic(String reason) {
+                // Já tratado
+            }
+
+            @Override
+            public void onCancelPanic(String reason) {
+                // Já tratado
+            }
+
+            @Override
+            public void onElevateSensitivity(String reason) {
+                // Futura implementação
+            }
+
+            @Override
+            public void onRiskScoreUpdate(double score, String level, List<String> reasons) {
+                // Futura implementação (enviar os motivos pro painel técnico)
+            }
+
+            @Override
+            public void onPhraseDetected(String phraseId, double confidence, String type) {
+                // Repassa EXATAMENTE o match da frase para o App no painel Híbrido!
+                Intent intent = new Intent("tech.orizon.ampara.AUDIO_TRIGGER_EVENT");
+                intent.setPackage(getPackageName());
+                intent.putExtra("event", "phraseDetected");
+                intent.putExtra("phraseId", phraseId);
+                intent.putExtra("confidence", confidence);
+                intent.putExtra("phraseType", type);
+                intent.putExtra("timestamp", System.currentTimeMillis());
+                sendBroadcast(intent);
+                Log.d(TAG, "[ASR Match Broadcast] Enviado pro Capacitor. word=" + phraseId + ", conf=" + confidence);
+            }
+        });
+
+        Log.i(TAG, "[PIPELINE] Pipeline híbrido inicializado | frases=" + phrasesLoaded);
 
         // Initialize credentials and IDs
         loadInitialCredentials();
@@ -486,6 +567,12 @@ public class AudioTriggerService extends Service {
                 }
             }
 
+            // Tuning local — aplica parâmetros individuais em runtime
+            if ("UPDATE_CONFIG_TUNING".equals(action)) {
+                Log.i(TAG, "[Tuning] Config tuning update requested");
+                applyTuningConfig(intent);
+            }
+
             if ("GET_STATUS".equals(action)) {
                 Log.d(TAG, "Status request received");
                 // Proteção contra null: detector pode não estar inicializado ainda
@@ -514,6 +601,66 @@ public class AudioTriggerService extends Service {
         // API pode enviar apenas monitoringEnabled + monitoringPeriods (não
         // implementado aqui)
         // Thresholds NÃO mudam
+    }
+
+    /**
+     * Aplica parâmetros de tuning vindos do painel técnico.
+     * Atualiza o config em memória e o detector em runtime.
+     */
+    private void applyTuningConfig(Intent intent) {
+        if (config == null || detector == null) {
+            Log.w(TAG, "[Tuning] Config or detector is null, ignoring tuning");
+            return;
+        }
+
+        // Aplica cada parâmetro se presente no intent
+        if (intent.hasExtra("vadDeltaDb")) {
+            config.vadDeltaDb = intent.getDoubleExtra("vadDeltaDb", config.vadDeltaDb);
+            Log.i(TAG, "[Tuning] vadDeltaDb = " + config.vadDeltaDb);
+        }
+        if (intent.hasExtra("loudDeltaDb")) {
+            config.loudDeltaDb = intent.getDoubleExtra("loudDeltaDb", config.loudDeltaDb);
+            Log.i(TAG, "[Tuning] loudDeltaDb = " + config.loudDeltaDb);
+        }
+        if (intent.hasExtra("speechDensityMin")) {
+            config.speechDensityMin = intent.getDoubleExtra("speechDensityMin", config.speechDensityMin);
+            Log.i(TAG, "[Tuning] speechDensityMin = " + config.speechDensityMin);
+        }
+        if (intent.hasExtra("loudDensityMin")) {
+            config.loudDensityMin = intent.getDoubleExtra("loudDensityMin", config.loudDensityMin);
+            Log.i(TAG, "[Tuning] loudDensityMin = " + config.loudDensityMin);
+        }
+        if (intent.hasExtra("discussionWindowSeconds")) {
+            config.discussionWindowSeconds = intent.getIntExtra("discussionWindowSeconds",
+                    config.discussionWindowSeconds);
+            Log.i(TAG, "[Tuning] discussionWindowSeconds = " + config.discussionWindowSeconds);
+        }
+        if (intent.hasExtra("startHoldSeconds")) {
+            config.startHoldSeconds = intent.getIntExtra("startHoldSeconds", config.startHoldSeconds);
+            Log.i(TAG, "[Tuning] startHoldSeconds = " + config.startHoldSeconds);
+        }
+        if (intent.hasExtra("endHoldSeconds")) {
+            config.endHoldSeconds = intent.getIntExtra("endHoldSeconds", config.endHoldSeconds);
+            Log.i(TAG, "[Tuning] endHoldSeconds = " + config.endHoldSeconds);
+        }
+        if (intent.hasExtra("silenceDecaySeconds")) {
+            config.silenceDecaySeconds = intent.getIntExtra("silenceDecaySeconds", config.silenceDecaySeconds);
+            Log.i(TAG, "[Tuning] silenceDecaySeconds = " + config.silenceDecaySeconds);
+        }
+        if (intent.hasExtra("speechDensityEnd")) {
+            config.speechDensityEnd = intent.getDoubleExtra("speechDensityEnd", config.speechDensityEnd);
+            Log.i(TAG, "[Tuning] speechDensityEnd = " + config.speechDensityEnd);
+        }
+        if (intent.hasExtra("loudDensityEnd")) {
+            config.loudDensityEnd = intent.getDoubleExtra("loudDensityEnd", config.loudDensityEnd);
+            Log.i(TAG, "[Tuning] loudDensityEnd = " + config.loudDensityEnd);
+        }
+        if (intent.hasExtra("cooldownSeconds")) {
+            config.cooldownSeconds = intent.getIntExtra("cooldownSeconds", config.cooldownSeconds);
+            Log.i(TAG, "[Tuning] cooldownSeconds = " + config.cooldownSeconds);
+        }
+
+        Log.i(TAG, "[Tuning] Config applied successfully");
     }
 
     private void startAudioCapture() {
@@ -659,6 +806,11 @@ public class AudioTriggerService extends Service {
         DiscussionDetector.AggregationMetrics metrics = new DiscussionDetector.AggregationMetrics(rmsDb, zcr, isSpeech,
                 isLoud);
         aggregationBuffer.add(metrics);
+
+        // Alimentar ring buffer do pipeline híbrido (L2)
+        if (pipelineController != null) {
+            pipelineController.feedAudio(samples, 0, length);
+        }
     }
 
     private void processAggregation() {
@@ -704,6 +856,17 @@ public class AudioTriggerService extends Service {
         double discussionScore = (speechNorm + loudNorm) / 2.0;
         notifyMetrics(avgRmsDb, avgZcr, isSpeech, isLoud, detector.getStateString(), discussionScore,
                 detector.isCalibrated(), result.speechDensity, result.loudDensity, detector.getNoiseFloor());
+
+        // Alimentar RMS para detecção de padrão estável (TV/música) no pipeline
+        if (pipelineController != null) {
+            pipelineController.feedRmsDb(avgRmsDb);
+
+            // Escalar para pipeline quando detector detecta fala significativa
+            if (isSpeech && result.speechDensity >= config.speechDensityMin) {
+                pipelineController.onAcousticTrigger(
+                        Math.min(result.speechDensity, 1.0), "SPEECH_BURST");
+            }
+        }
 
         // Log detection
         if (result.shouldStartRecording) {
@@ -873,6 +1036,24 @@ public class AudioTriggerService extends Service {
         intent.putExtra("speechDensity", speechDensity);
         intent.putExtra("loudDensity", loudDensity);
         intent.putExtra("noiseFloor", noiseFloor);
+        // Dados de silêncio para diagnóstico na tela técnica
+        intent.putExtra("isSilent", silenceDetector.isSilent());
+        intent.putExtra("silenceDurationMs", silenceDetector.getSilenceDuration());
+        intent.putExtra("silenceTimeoutMs", 600000L); // 10 minutos
+        intent.putExtra("silenceThresholdDb", -40.0);
+        intent.putExtra("isRecording", recorder.isRecording());
+        // Timers e contadores do DiscussionDetector para tela técnica
+        intent.putExtra("timeInStateMs", detector.getTimeInStateMs());
+        intent.putExtra("continuousSilenceMs", detector.getContinuousSilenceMs());
+        intent.putExtra("isManualRecording", detector.getIsManualRecording());
+        intent.putExtra("startHoldSeconds", detector.getStartHoldSeconds());
+        intent.putExtra("endHoldSeconds", detector.getEndHoldSeconds());
+        intent.putExtra("silenceDecaySeconds", detector.getSilenceDecaySeconds());
+        intent.putExtra("cooldownSeconds", detector.getCooldownSeconds());
+        intent.putExtra("speechDensityMin", detector.getSpeechDensityMin());
+        intent.putExtra("loudDensityMin", detector.getLoudDensityMin());
+        intent.putExtra("speechDensityEnd", detector.getSpeechDensityEnd());
+        intent.putExtra("loudDensityEnd", detector.getLoudDensityEnd());
         intent.putExtra("timestamp", System.currentTimeMillis());
         sendBroadcast(intent);
     }
@@ -1023,7 +1204,7 @@ public class AudioTriggerService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     EVENTS_CHANNEL_ID,
                     "Eventos Ampara",
-                    NotificationManager.IMPORTANCE_LOW);
+                    NotificationManager.IMPORTANCE_HIGH);
             channel.setDescription("Notificações silenciosas de eventos do Ampara");
             channel.setShowBadge(true);
             channel.enableVibration(false);
@@ -1061,7 +1242,7 @@ public class AudioTriggerService extends Service {
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setContentIntent(pendingIntent)
                     .setAutoCancel(true)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .build();

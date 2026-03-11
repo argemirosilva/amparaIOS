@@ -15,22 +15,29 @@ interface RecordingState {
   origemGravacao: OrigemGravacao | null;
 }
 
+// Variáveis de módulo: persistem entre mount/unmount do hook
+// Garante que o timer e estado de gravação não se perdem ao navegar
+let moduleStartedAt: number | null = null;
+let moduleIsRecording = false;
+let moduleOrigemGravacao: OrigemGravacao = 'botao_manual';
+let moduleSessionId: string | null = null;
+
 export function useRecording() {
-  const [state, setState] = useState<RecordingState>({
-    isRecording: false,
+  const [state, setState] = useState<RecordingState>(() => ({
+    isRecording: moduleIsRecording,
     isPaused: false,
     isStopping: false,
-    duration: 0,
+    duration: moduleStartedAt ? Math.floor((Date.now() - moduleStartedAt) / 1000) : 0,
     segmentsSent: 0,
     segmentsPending: 0,
-    origemGravacao: null,
-  });
+    origemGravacao: moduleIsRecording ? moduleOrigemGravacao : null,
+  }));
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isRecordingRef = useRef(false);
-  const origemGravacaoRef = useRef<OrigemGravacao>('botao_manual');
-  const currentSessionIdRef = useRef<string | null>(null);
-  const startedAtRef = useRef<number | null>(null);
+  const isRecordingRef = useRef(moduleIsRecording);
+  const origemGravacaoRef = useRef<OrigemGravacao>(moduleOrigemGravacao);
+  const currentSessionIdRef = useRef<string | null>(moduleSessionId);
+  const startedAtRef = useRef<number | null>(moduleStartedAt);
 
   // iOS MediaRecorder refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -49,14 +56,16 @@ export function useRecording() {
       switch (event.event) {
         case 'nativeRecordingStarted':
           currentSessionIdRef.current = event.sessionId || null;
-          // Capture startedAt timestamp from native
           startedAtRef.current = (event.startedAt as number) || Date.now();
-          console.log('[useRecording] Recording started at:', new Date(startedAtRef.current).toISOString());
-          // Update origem if provided by native (automatic detection)
           if (event.origemGravacao) {
             origemGravacaoRef.current = event.origemGravacao as OrigemGravacao;
-            console.log('[useRecording] Origem from native:', event.origemGravacao);
           }
+          isRecordingRef.current = true;
+          // Sincronizar variáveis de módulo para persistir entre navegações
+          moduleStartedAt = startedAtRef.current;
+          moduleIsRecording = true;
+          moduleOrigemGravacao = origemGravacaoRef.current;
+          moduleSessionId = currentSessionIdRef.current;
           setState((prev) => ({
             ...prev,
             isRecording: true,
@@ -66,6 +75,7 @@ export function useRecording() {
             segmentsPending: 0,
             origemGravacao: event.origemGravacao as OrigemGravacao || prev.origemGravacao,
           }));
+          console.log('[useRecording] ✅ Recording started, module vars synced');
           break;
 
         case 'nativeRecordingProgress':
@@ -98,13 +108,28 @@ export function useRecording() {
           }));
           currentSessionIdRef.current = null;
           startedAtRef.current = null;
+          isRecordingRef.current = false;
+          // Limpar variáveis de módulo
+          moduleStartedAt = null;
+          moduleIsRecording = false;
+          moduleSessionId = null;
           break;
 
         case 'recordingState':
-          // Sync recording state from native (e.g., after app restart)
           console.log('[useRecording] Syncing recording state from native:', event);
           if (event.isRecording !== undefined) {
             currentSessionIdRef.current = event.sessionId || null;
+            if (event.isRecording && !startedAtRef.current) {
+              startedAtRef.current = (event.startedAt as number) || Date.now();
+            }
+            if (!event.isRecording) {
+              startedAtRef.current = null;
+            }
+            isRecordingRef.current = event.isRecording as boolean;
+            // Sincronizar variáveis de módulo
+            moduleStartedAt = startedAtRef.current;
+            moduleIsRecording = event.isRecording as boolean;
+            moduleSessionId = currentSessionIdRef.current;
             setState((prev) => ({
               ...prev,
               isRecording: event.isRecording as boolean,

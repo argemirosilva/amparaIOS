@@ -107,6 +107,67 @@ public class AudioTriggerPlugin extends Plugin {
                 if (intent.hasExtra("noiseFloor")) {
                     ret.put("noiseFloor", intent.getDoubleExtra("noiseFloor", 0.0));
                 }
+                // Dados de silêncio para tela técnica
+                if (intent.hasExtra("isSilent")) {
+                    ret.put("isSilent", intent.getBooleanExtra("isSilent", false));
+                }
+                if (intent.hasExtra("silenceDurationMs")) {
+                    ret.put("silenceDurationMs", intent.getLongExtra("silenceDurationMs", 0));
+                }
+                if (intent.hasExtra("silenceTimeoutMs")) {
+                    ret.put("silenceTimeoutMs", intent.getLongExtra("silenceTimeoutMs", 0));
+                }
+                if (intent.hasExtra("silenceThresholdDb")) {
+                    ret.put("silenceThresholdDb", intent.getDoubleExtra("silenceThresholdDb", 0.0));
+                }
+                if (intent.hasExtra("isRecording")) {
+                    ret.put("isRecording", intent.getBooleanExtra("isRecording", false));
+                }
+                // Timers e contadores do DiscussionDetector
+                if (intent.hasExtra("timeInStateMs")) {
+                    ret.put("timeInStateMs", intent.getLongExtra("timeInStateMs", 0));
+                }
+                if (intent.hasExtra("continuousSilenceMs")) {
+                    ret.put("continuousSilenceMs", intent.getLongExtra("continuousSilenceMs", 0));
+                }
+                if (intent.hasExtra("isManualRecording")) {
+                    ret.put("isManualRecording", intent.getBooleanExtra("isManualRecording", false));
+                }
+                if (intent.hasExtra("startHoldSeconds")) {
+                    ret.put("startHoldSeconds", intent.getIntExtra("startHoldSeconds", 0));
+                }
+                if (intent.hasExtra("endHoldSeconds")) {
+                    ret.put("endHoldSeconds", intent.getIntExtra("endHoldSeconds", 0));
+                }
+                if (intent.hasExtra("silenceDecaySeconds")) {
+                    ret.put("silenceDecaySeconds", intent.getIntExtra("silenceDecaySeconds", 0));
+                }
+                if (intent.hasExtra("cooldownSeconds")) {
+                    ret.put("cooldownSeconds", intent.getIntExtra("cooldownSeconds", 0));
+                }
+                if (intent.hasExtra("speechDensityMin")) {
+                    ret.put("speechDensityMin", intent.getDoubleExtra("speechDensityMin", 0));
+                }
+                if (intent.hasExtra("loudDensityMin")) {
+                    ret.put("loudDensityMin", intent.getDoubleExtra("loudDensityMin", 0));
+                }
+                if (intent.hasExtra("speechDensityEnd")) {
+                    ret.put("speechDensityEnd", intent.getDoubleExtra("speechDensityEnd", 0));
+                }
+                if (intent.hasExtra("loudDensityEnd")) {
+                    ret.put("loudDensityEnd", intent.getDoubleExtra("loudDensityEnd", 0));
+                }
+
+                // Campos extras do ASR (Keyword Spotting) proveniente do PipelineController
+                if (intent.hasExtra("phraseId")) {
+                    ret.put("phraseId", intent.getStringExtra("phraseId"));
+                }
+                if (intent.hasExtra("confidence")) {
+                    ret.put("confidence", intent.getDoubleExtra("confidence", 0.0));
+                }
+                if (intent.hasExtra("phraseType")) {
+                    ret.put("phraseType", intent.getStringExtra("phraseType"));
+                }
 
                 notifyListeners("audioTriggerEvent", ret);
             }
@@ -188,6 +249,64 @@ public class AudioTriggerPlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "Error updating AudioTrigger config", e);
             call.reject("Failed to update config: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Atualiza parâmetros individuais de detecção em tempo real (painel de tuning).
+     */
+    @PluginMethod
+    public void updateTuning(PluginCall call) {
+        try {
+            Intent intent = new Intent(getContext(), AudioTriggerService.class);
+            intent.setAction("UPDATE_CONFIG_TUNING");
+
+            // Mapeia cada parâmetro recebido do JS para o intent
+            if (call.hasOption("vadDeltaDb")) {
+                intent.putExtra("vadDeltaDb", call.getDouble("vadDeltaDb"));
+            }
+            if (call.hasOption("loudDeltaDb")) {
+                intent.putExtra("loudDeltaDb", call.getDouble("loudDeltaDb"));
+            }
+            if (call.hasOption("speechDensityMin")) {
+                intent.putExtra("speechDensityMin", call.getDouble("speechDensityMin"));
+            }
+            if (call.hasOption("loudDensityMin")) {
+                intent.putExtra("loudDensityMin", call.getDouble("loudDensityMin"));
+            }
+            if (call.hasOption("discussionWindowSeconds")) {
+                intent.putExtra("discussionWindowSeconds", call.getInt("discussionWindowSeconds"));
+            }
+            if (call.hasOption("startHoldSeconds")) {
+                intent.putExtra("startHoldSeconds", call.getInt("startHoldSeconds"));
+            }
+            if (call.hasOption("endHoldSeconds")) {
+                intent.putExtra("endHoldSeconds", call.getInt("endHoldSeconds"));
+            }
+            if (call.hasOption("silenceDecaySeconds")) {
+                intent.putExtra("silenceDecaySeconds", call.getInt("silenceDecaySeconds"));
+            }
+            if (call.hasOption("speechDensityEnd")) {
+                intent.putExtra("speechDensityEnd", call.getDouble("speechDensityEnd"));
+            }
+            if (call.hasOption("loudDensityEnd")) {
+                intent.putExtra("loudDensityEnd", call.getDouble("loudDensityEnd"));
+            }
+            if (call.hasOption("cooldownSeconds")) {
+                intent.putExtra("cooldownSeconds", call.getInt("cooldownSeconds"));
+            }
+
+            getContext().startService(intent);
+
+            Log.d(TAG, "[Tuning] Parameters sent to service");
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+
+        } catch (Exception e) {
+            Log.e(TAG, "[Tuning] Error updating parameters", e);
+            call.reject("Failed to update tuning: " + e.getMessage());
         }
     }
 
@@ -525,6 +644,229 @@ public class AudioTriggerPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("enabled", enabled);
         call.resolve(ret);
+    }
+
+    // ========== Pipeline Híbrido — Métodos de Enrollment (SPEC v3) ==========
+
+    /**
+     * Inicia enrollment de uma frase personalizada.
+     * Params: { phraseId: string, type: "OPERATIONAL" | "CONTEXTUAL" }
+     */
+    @PluginMethod
+    public void startEnrollment(PluginCall call) {
+        try {
+            AudioTriggerService service = AudioTriggerService.getInstance();
+            if (service == null || service.getPhraseEnrollmentManager() == null) {
+                call.reject("Serviço não está rodando");
+                return;
+            }
+
+            String phraseId = call.getString("phraseId");
+            String typeStr = call.getString("type", "OPERATIONAL");
+
+            if (phraseId == null || phraseId.isEmpty()) {
+                call.reject("phraseId é obrigatório");
+                return;
+            }
+
+            tech.orizon.ampara.audio.phrase.PhraseTemplate.PhraseType type;
+            switch (typeStr.toUpperCase()) {
+                case "CONTEXTUAL":
+                    type = tech.orizon.ampara.audio.phrase.PhraseTemplate.PhraseType.CONTEXTUAL;
+                    break;
+                case "GENERIC":
+                    type = tech.orizon.ampara.audio.phrase.PhraseTemplate.PhraseType.GENERIC;
+                    break;
+                default:
+                    type = tech.orizon.ampara.audio.phrase.PhraseTemplate.PhraseType.OPERATIONAL;
+                    break;
+            }
+
+            tech.orizon.ampara.audio.phrase.PhraseEnrollmentManager.EnrollmentResult result = service
+                    .getPhraseEnrollmentManager().startEnrollment(phraseId, type);
+
+            JSObject ret = new JSObject();
+            ret.put("success", result.success);
+            ret.put("message", result.message);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "startEnrollment error", e);
+            call.reject("Erro ao iniciar enrollment: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Adiciona uma amostra de áudio ao enrollment em andamento.
+     * O áudio é capturado diretamente do microfone por N segundos.
+     * Params: { durationMs: number (padrão 3000) }
+     */
+    @PluginMethod
+    public void addEnrollmentSample(PluginCall call) {
+        try {
+            AudioTriggerService service = AudioTriggerService.getInstance();
+            if (service == null || service.getPhraseEnrollmentManager() == null) {
+                call.reject("Serviço não está rodando");
+                return;
+            }
+
+            int durationMs = call.getInt("durationMs", 3000);
+            int sampleRate = 16000;
+            int totalSamples = (sampleRate * durationMs) / 1000;
+
+            // Gravar áudio do microfone para enrollment
+            // Usa thread separada para não bloquear a UI
+            new Thread(() -> {
+                try {
+                    int minBufferSize = android.media.AudioRecord.getMinBufferSize(
+                            sampleRate,
+                            android.media.AudioFormat.CHANNEL_IN_MONO,
+                            android.media.AudioFormat.ENCODING_PCM_16BIT);
+
+                    android.media.AudioRecord recorder = new android.media.AudioRecord(
+                            android.media.MediaRecorder.AudioSource.MIC,
+                            sampleRate,
+                            android.media.AudioFormat.CHANNEL_IN_MONO,
+                            android.media.AudioFormat.ENCODING_PCM_16BIT,
+                            Math.max(minBufferSize, totalSamples * 2));
+
+                    short[] buffer = new short[totalSamples];
+                    recorder.startRecording();
+
+                    int offset = 0;
+                    while (offset < totalSamples) {
+                        int read = recorder.read(buffer, offset, totalSamples - offset);
+                        if (read < 0)
+                            break;
+                        offset += read;
+                    }
+
+                    recorder.stop();
+                    recorder.release();
+
+                    // Processar amostra no enrollment manager
+                    tech.orizon.ampara.audio.phrase.PhraseEnrollmentManager.EnrollmentResult result = service
+                            .getPhraseEnrollmentManager().addSample(buffer, 0, offset);
+
+                    JSObject ret = new JSObject();
+                    ret.put("success", result.success);
+                    ret.put("message", result.message);
+                    ret.put("currentSamples", result.currentSamples);
+                    ret.put("minRequired", result.minRequired);
+                    ret.put("maxAllowed", result.maxAllowed);
+                    call.resolve(ret);
+                } catch (Exception e) {
+                    Log.e(TAG, "addEnrollmentSample recording error", e);
+                    call.reject("Erro ao gravar amostra: " + e.getMessage());
+                }
+            }).start();
+        } catch (Exception e) {
+            Log.e(TAG, "addEnrollmentSample error", e);
+            call.reject("Erro: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Finaliza enrollment: valida consistência, calcula thresholds, persiste.
+     */
+    @PluginMethod
+    public void finishEnrollment(PluginCall call) {
+        try {
+            AudioTriggerService service = AudioTriggerService.getInstance();
+            if (service == null || service.getPhraseEnrollmentManager() == null) {
+                call.reject("Serviço não está rodando");
+                return;
+            }
+
+            tech.orizon.ampara.audio.phrase.PhraseEnrollmentManager.EnrollmentResult result = service
+                    .getPhraseEnrollmentManager().finishEnrollment();
+
+            JSObject ret = new JSObject();
+            ret.put("success", result.success);
+            ret.put("message", result.message);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "finishEnrollment error", e);
+            call.reject("Erro: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Cancela enrollment em andamento.
+     */
+    @PluginMethod
+    public void cancelEnrollment(PluginCall call) {
+        try {
+            AudioTriggerService service = AudioTriggerService.getInstance();
+            if (service == null || service.getPhraseEnrollmentManager() == null) {
+                call.reject("Serviço não está rodando");
+                return;
+            }
+
+            service.getPhraseEnrollmentManager().cancelEnrollment();
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Erro: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Remove uma frase cadastrada.
+     * Params: { phraseId: string }
+     */
+    @PluginMethod
+    public void removePhrase(PluginCall call) {
+        try {
+            AudioTriggerService service = AudioTriggerService.getInstance();
+            if (service == null || service.getPhraseEnrollmentManager() == null) {
+                call.reject("Serviço não está rodando");
+                return;
+            }
+
+            String phraseId = call.getString("phraseId");
+            if (phraseId == null || phraseId.isEmpty()) {
+                call.reject("phraseId é obrigatório");
+                return;
+            }
+
+            boolean removed = service.getPhraseEnrollmentManager().removePhrase(phraseId);
+
+            JSObject ret = new JSObject();
+            ret.put("success", removed);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Erro: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Retorna diagnósticos do pipeline e enrollment.
+     */
+    @PluginMethod
+    public void getPipelineDiagnostics(PluginCall call) {
+        try {
+            AudioTriggerService service = AudioTriggerService.getInstance();
+            if (service == null) {
+                call.reject("Serviço não está rodando");
+                return;
+            }
+
+            JSObject ret = new JSObject();
+
+            if (service.getPipelineController() != null) {
+                ret.put("pipeline", service.getPipelineController().getDiagnostics());
+            }
+            if (service.getPhraseEnrollmentManager() != null) {
+                ret.put("enrollment", service.getPhraseEnrollmentManager().getDiagnostics());
+                ret.put("hasStaleTemplates", service.getPhraseEnrollmentManager().hasStaleTemplates());
+            }
+
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Erro: " + e.getMessage());
+        }
     }
 
     @Override

@@ -342,6 +342,14 @@ class HybridAudioTriggerService {
         this.notifyStateChange();
       }
 
+      // Processar métricas nativas direto no service (independente de componentes)
+      // Garante atualização contínua mesmo quando Home.tsx não está montado
+      if (event.event === 'audioMetrics') {
+        import('@/services/audioTriggerSingleton').then(({ audioTriggerSingleton }) => {
+          audioTriggerSingleton.setNativeMetrics(event);
+        });
+      }
+
       // Handle calibration status from native
       if (event.event === 'calibrationStatus' && event.isCalibrated !== undefined) {
         console.log('[HybridAudioTrigger] 📡 Native calibration status:', event.isCalibrated);

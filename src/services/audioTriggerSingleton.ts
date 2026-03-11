@@ -40,6 +40,13 @@ class AudioTriggerSingleton {
   private metrics: AudioTriggerMetrics | null = null;
   private triggerState: TriggerState = 'IDLE';
 
+  // Buffer de RMS para média de 4 segundos
+  private rmsBuffer: number[] = [];
+  // Buffer de ZCR para média de 4 segundos
+  private zcrBuffer: number[] = [];
+  // Limiar ZCR para classificação H/M (configurável via tuning)
+  private zcrThreshold: number = 0.12;
+
   // Audio processing refs
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -473,8 +480,11 @@ class AudioTriggerSingleton {
     return this.metrics?.discussionOn ?? false;
   }
 
-  getIsCalibrated(): boolean {
-    return this.isCalibrated;
+  getIsCalibrated(): boolean { return this.isCalibrated; }
+
+  // Atualizar limiar ZCR para classificação H/M em runtime
+  setZcrThreshold(value: number): void {
+    this.zcrThreshold = value;
   }
 
   /**
@@ -492,25 +502,38 @@ class AudioTriggerSingleton {
    * Permite que as métricas nativas atualizem o estado da UI
    */
   setNativeMetrics(nativeMetrics: any) {
-    console.log('[AudioTriggerSingleton] 🔄 setNativeMetrics called:', {
-      score: nativeMetrics.score,
-      rmsDb: nativeMetrics.rmsDb,
-      isSpeech: nativeMetrics.isSpeech,
-      isLoud: nativeMetrics.isLoud,
-      listenersCount: this.stateListeners.length
-    });
-
     // Classificação H/M baseada no ZCR
     const zcr = nativeMetrics.zcr ?? 0;
     let gender: 'MALE' | 'FEMALE' | 'UNKNOWN' = 'UNKNOWN';
     if (zcr > 0 && (nativeMetrics.isSpeech ?? false)) {
-      gender = zcr < 0.08 ? 'MALE' : 'FEMALE';
+      gender = zcr < this.zcrThreshold ? 'MALE' : 'FEMALE';
     }
+
+    // Mapeia o estado nativo para o estado do trigger
+    const nativeState = nativeMetrics.state ?? 'IDLE';
+    if (nativeState !== this.triggerState) {
+      this.triggerState = nativeState as TriggerState;
+    }
+
+    // Calcular média RMS de 4 segundos
+    const currentRms = nativeMetrics.rmsDb ?? 0;
+    this.rmsBuffer.push(currentRms);
+    if (this.rmsBuffer.length > 4) this.rmsBuffer.shift(); // manter últimos 4 valores (~4s com agregação 1s)
+    const rmsAvg4s = this.rmsBuffer.reduce((a, b) => a + b, 0) / this.rmsBuffer.length;
+
+    // Calcular média ZCR de 4 segundos (só quando há fala)
+    if (zcr > 0 && (nativeMetrics.isSpeech ?? false)) {
+      this.zcrBuffer.push(zcr);
+      if (this.zcrBuffer.length > 4) this.zcrBuffer.shift();
+    }
+    const zcrAvg4s = this.zcrBuffer.length > 0
+      ? this.zcrBuffer.reduce((a, b) => a + b, 0) / this.zcrBuffer.length
+      : 0;
 
     // Atualiza métricas com dados nativos
     this.metrics = {
       timestamp: nativeMetrics.timestamp ?? Date.now(),
-      dbfsCurrent: nativeMetrics.rmsDb ?? 0,
+      dbfsCurrent: currentRms,
       noiseFloorDb: nativeMetrics.noiseFloor ?? 0,
       speechRatio: 0,
       loudRatio: 0,
@@ -525,15 +548,38 @@ class AudioTriggerSingleton {
       speechOn: nativeMetrics.isSpeech ?? false,
       loudOn: nativeMetrics.isLoud ?? false,
       discussionOn: nativeMetrics.state === 'DISCUSSION_DETECTED',
-      recordingOn: false,
+      recordingOn: nativeMetrics.isRecording ?? false,
       recordingDuration: 0,
-      state: this.triggerState,
+      state: nativeState as TriggerState,
       isNoisy: false,
+      // Dados de silêncio para tela técnica
+      isSilent: nativeMetrics.isSilent ?? false,
+      silenceDurationMs: nativeMetrics.silenceDurationMs ?? 0,
+      silenceTimeoutMs: nativeMetrics.silenceTimeoutMs ?? 600000,
+      silenceThresholdDb: nativeMetrics.silenceThresholdDb ?? -40.0,
+      isNativeRecording: nativeMetrics.isRecording ?? false,
+      // Timers e contadores do DiscussionDetector
+      timeInStateMs: nativeMetrics.timeInStateMs ?? 0,
+      continuousSilenceMs: nativeMetrics.continuousSilenceMs ?? 0,
+      isManualRecording: nativeMetrics.isManualRecording ?? false,
+      startHoldSeconds: nativeMetrics.startHoldSeconds ?? 0,
+      endHoldSeconds: nativeMetrics.endHoldSeconds ?? 0,
+      silenceDecaySeconds: nativeMetrics.silenceDecaySeconds ?? 0,
+      cooldownSeconds: nativeMetrics.cooldownSeconds ?? 0,
+      speechDensityMin: nativeMetrics.speechDensityMin ?? 0,
+      loudDensityMin: nativeMetrics.loudDensityMin ?? 0,
+      speechDensityEnd: nativeMetrics.speechDensityEnd ?? 0,
+      loudDensityEnd: nativeMetrics.loudDensityEnd ?? 0,
+      rmsAvg4s,
+      zcrAvg4s,
     };
 
-    console.log('[AudioTriggerSingleton] 📊 Metrics updated, notifying', this.stateListeners.length, 'listeners');
+    // Atualiza calibração do nativo
+    if (nativeMetrics.isCalibrated !== undefined) {
+      this.isCalibrated = nativeMetrics.isCalibrated;
+    }
+
     this.notifyStateChange();
-    console.log('[AudioTriggerSingleton] ✅ Listeners notified');
   }
 }
 

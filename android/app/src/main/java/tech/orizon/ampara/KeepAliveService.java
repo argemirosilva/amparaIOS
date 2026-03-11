@@ -81,7 +81,7 @@ public class KeepAliveService extends Service {
             } else if (isCritical) {
                 interval = 30000; // 30s alerta
             } else {
-                interval = 60000; // 60s normal (Android 15 resilience)
+                interval = 30000; // 30s normal (servidor espera máximo 45s)
             }
 
             Log.d(TAG, "Loop execution - Interval: " + (interval / 1000) + "s (Panic=" + isPanic + ", Alert="
