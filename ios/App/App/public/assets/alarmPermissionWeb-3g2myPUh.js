@@ -1,0 +1,1 @@
+import{W as e}from"./index-kBco431Y.js";class s extends e{async canScheduleExactAlarms(){return console.log("[AlarmPermission] Web/iOS platform - returning true (no permission needed)"),{canSchedule:!0}}async requestScheduleExactAlarms(){return console.log("[AlarmPermission] Web/iOS platform - no action needed"),Promise.resolve()}}export{s as AlarmPermissionWeb};

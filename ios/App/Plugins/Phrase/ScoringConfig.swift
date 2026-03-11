@@ -36,9 +36,9 @@ class ScoringConfig {
     var maxSamplesPerPhrase: Int = 5
 
     // MARK: - Enrollment
-    var enrollmentConsistencyMaxDistance: Double = 60.0
-    var enrollmentConflictMinDistance: Double = 40.0
-    var enrollmentThresholdFactor: Double = 1.3
+    var enrollmentConsistencyMaxDistance: Double = 120.0
+    var enrollmentConflictMinDistance: Double = 2.0
+    var enrollmentThresholdFactor: Double = 4.0
 
     // MARK: - Segurança por comando (SPEC v3 §10)
     struct CommandSecurity {
@@ -48,19 +48,19 @@ class ScoringConfig {
     }
 
     var commandSecurity: [String: CommandSecurity] = [
-        "start_recording": CommandSecurity(confidenceMin: 0.7, repetitionsRequired: 1, cooldownSeconds: 5),
-        "stop_recording":  CommandSecurity(confidenceMin: 0.6, repetitionsRequired: 1, cooldownSeconds: 3),
+        "start_recording": CommandSecurity(confidenceMin: 0.55, repetitionsRequired: 1, cooldownSeconds: 5),
+        "stop_recording":  CommandSecurity(confidenceMin: 0.65, repetitionsRequired: 1, cooldownSeconds: 10),
         "start_panic":     CommandSecurity(confidenceMin: 0.85, repetitionsRequired: 2, cooldownSeconds: 30),
-        "cancel_panic":    CommandSecurity(confidenceMin: 0.9, repetitionsRequired: 3, cooldownSeconds: 10),
+        "cancel_panic":    CommandSecurity(confidenceMin: 0.9, repetitionsRequired: 3, cooldownSeconds: 60),
     ]
 
     // MARK: - Repetição
-    var repetitionBufferMaxAge: TimeInterval = 30.0
-    var repetitionBufferMaxEntries: Int = 10
+    var repetitionBufferMaxAge: TimeInterval = 15.0
+    var repetitionBufferMaxEntries: Int = 8
 
     // MARK: - Confirmation window
     var confirmationWindowPreSeconds: Double = 3.0
-    var confirmationWindowPostSeconds: Double = 2.0
+    var confirmationWindowPostSeconds: Double = 3.0
 
     // MARK: - Mode B (escuta contínua leve)
     var modeBEnabled: Bool = true

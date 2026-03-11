@@ -204,7 +204,11 @@ public class AudioTriggerNativePlugin: CAPPlugin, CAPBridgedPlugin {
     // ========== Pipeline Híbrido (SPEC v3) ==========
     private let pipelineScoringConfig = ScoringConfig()
     private lazy var phraseEnrollmentManager = PhraseEnrollmentManager(config: pipelineScoringConfig)
-    private lazy var pipelineController = PipelineController(config: pipelineScoringConfig, enrollmentManager: phraseEnrollmentManager)
+    private lazy var pipelineController: PipelineController = {
+        let controller = PipelineController(config: pipelineScoringConfig, enrollmentManager: phraseEnrollmentManager)
+        controller.actionListener = self
+        return controller
+    }()
 
     // MARK: - Capacitor Methods
 
@@ -3681,5 +3685,90 @@ extension AudioTriggerNativePlugin: CLLocationManagerDelegate {
             "enrollment": phraseEnrollmentManager.getDiagnostics(),
             "hasStaleTemplates": phraseEnrollmentManager.hasStaleTemplates()
         ])
+    }
+}
+
+// MARK: - PipelineController.ActionListener
+extension AudioTriggerNativePlugin: PipelineController.ActionListener {
+    func onPipelineAction(action: String, phraseId: String?, confidence: Double, reasons: [String]) {
+        print("[AudioTriggerNative-iOS] 🎯 PIPELINE ACTION TIGGERED: \(action) | phrase=\(phraseId ?? "nil") | conf=\(confidence)")
+        
+        // Disparar métricas para o JS
+        self.notifyEvent("audioMetrics", data: [
+            "level": "COMMAND",
+            "score": confidence,
+            "phraseId": phraseId ?? "",
+            "reason": reasons.joined(separator: ", ")
+        ])
+
+        if action == "COMMAND" {
+            guard let phrase = phraseId else { return }
+            
+            switch phrase {
+            case "start_recording":
+                print("[AudioTriggerNative-iOS] 🎤 ASR Command: START RECORDING")
+                self.origemGravacao = "comando_voz_iniciar"
+                
+                DispatchQueue.main.async { [weak self] in
+                    do {
+                        try self?.startRecording()
+                    } catch {
+                        print("[AudioTriggerNative-iOS] ❌ ASR err start recording: \(error.localizedDescription)")
+                    }
+                }
+                
+            case "stop_recording":
+                print("[AudioTriggerNative-iOS] 🛑 ASR Command: STOP RECORDING")
+                self.origemGravacao = "comando_voz_parar"
+                self.stopReason = "comando_voz"
+                
+                DispatchQueue.main.async { [weak self] in
+                    self?.stopRecordingInternal()
+                    
+                    // Religando monitoramento igual no Android
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        do {
+                            try self?.startMonitoring()
+                        } catch {
+                            print("[AudioTriggerNative-iOS] ❌ ASR err restart monitoring: \(error)")
+                        }
+                    }
+                }
+                
+            case "start_panic":
+                print("[AudioTriggerNative-iOS] 🚨 ASR Command: START PANIC")
+                self.origemGravacao = "comando_voz_panico"
+                
+                DispatchQueue.main.async { [weak self] in
+                    do {
+                        try self?.startRecording()
+                    } catch {
+                        print("[AudioTriggerNative-iOS] ❌ ASR err start panic recording: \(error.localizedDescription)")
+                    }
+                    self?.triggerPanicEvent()
+                }
+                
+            case "cancel_panic":
+                print("[AudioTriggerNative-iOS] ❎ ASR Command: CANCEL PANIC")
+                self.origemGravacao = "comando_voz_cancela_panico"
+                self.stopReason = "panico_cancelado_voz"
+                
+                DispatchQueue.main.async { [weak self] in
+                    self?.stopRecordingInternal()
+                    
+                    // Notifica JS de cancelamento
+                    self?.notifyEvent("panicCancelled", data: ["reason": "voice_command"])
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        do {
+                            try self?.startMonitoring()
+                        } catch { }
+                    }
+                }
+                
+            default:
+                print("[AudioTriggerNative-iOS] ⚠️ Unknown ASR command: \(phrase)")
+            }
+        }
     }
 }
