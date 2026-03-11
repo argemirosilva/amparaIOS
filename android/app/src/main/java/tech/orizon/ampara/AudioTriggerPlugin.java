@@ -780,6 +780,11 @@ public class AudioTriggerPlugin extends Plugin {
             tech.orizon.ampara.audio.phrase.PhraseEnrollmentManager.EnrollmentResult result = service
                     .getPhraseEnrollmentManager().finishEnrollment();
 
+            // CRÍTICO: Recarregar pra memória do Detector ler
+            if (result.success) {
+                service.getPhraseEnrollmentManager().loadAllTemplates();
+            }
+
             JSObject ret = new JSObject();
             ret.put("success", result.success);
             ret.put("message", result.message);
@@ -832,6 +837,11 @@ public class AudioTriggerPlugin extends Plugin {
             }
 
             boolean removed = service.getPhraseEnrollmentManager().removePhrase(phraseId);
+
+            // CRÍTICO: Limpar a memória pro Detector parar de ouvir
+            if (removed) {
+                service.getPhraseEnrollmentManager().loadAllTemplates();
+            }
 
             JSObject ret = new JSObject();
             ret.put("success", removed);
