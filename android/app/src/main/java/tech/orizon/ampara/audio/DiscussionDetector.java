@@ -181,9 +181,11 @@ public class DiscussionDetector {
                         silenceStartTime = 0;
                     }
                 } else {
-                    // Discussion still ongoing - reset silence timer
-                    if (silenceStartTime != 0) {
-                        Log.d(TAG, "Silence interrupted - resetting 10s timer");
+                    // Só interrompe silêncio se fala for forte (>=65% na janela)
+                    // Fala fraca/moderada não deve resetar o timer de silêncio contínuo
+                    if (speechDensity >= 0.65 && silenceStartTime != 0) {
+                        Log.d(TAG, String.format("Silence interrupted by strong speech (%.0f%%) - resetting timer",
+                                speechDensity * 100));
                         silenceStartTime = 0;
                     }
                 }
@@ -207,10 +209,13 @@ public class DiscussionDetector {
                         isManualRecording = false; // Reset on completion
                     }
                 } else {
-                    // Discussion resumed - cancel countdown, back to recording
-                    Log.d(TAG, "Discussion resumed - cancelling countdown");
-                    state = State.RECORDING_STARTED;
-                    stateStartTime = now;
+                    // Só cancela countdown se fala for forte (>=65%)
+                    if (speechDensity >= 0.65) {
+                        Log.d(TAG, String.format("Discussion resumed (%.0f%% speech) - cancelling countdown",
+                                speechDensity * 100));
+                        state = State.RECORDING_STARTED;
+                        stateStartTime = now;
+                    }
                 }
                 break;
 
@@ -312,5 +317,63 @@ public class DiscussionDetector {
         silenceStartTime = 0;
         this.isManualRecording = isManual;
         Log.i(TAG, "State forced to RECORDING_STARTED (isManual=" + isManual + ")");
+    }
+
+    // Getters para tela técnica de debug
+    /** Tempo no estado atual em milissegundos */
+    public long getTimeInStateMs() {
+        return System.currentTimeMillis() - stateStartTime;
+    }
+
+    /** Duração de silêncio contínuo durante gravação (ms), 0 se não em silêncio */
+    public long getContinuousSilenceMs() {
+        if (silenceStartTime == 0)
+            return 0;
+        return System.currentTimeMillis() - silenceStartTime;
+    }
+
+    /** Se a gravação atual é manual */
+    public boolean getIsManualRecording() {
+        return isManualRecording;
+    }
+
+    /** Threshold de confirmação para iniciar gravação (segundos) */
+    public int getStartHoldSeconds() {
+        return config.startHoldSeconds;
+    }
+
+    /** Threshold de countdown para parar gravação (segundos) */
+    public int getEndHoldSeconds() {
+        return isManualRecording ? 120 : config.endHoldSeconds;
+    }
+
+    /** Período de silêncio necessário antes de iniciar countdown (segundos) */
+    public int getSilenceDecaySeconds() {
+        return config.silenceDecaySeconds;
+    }
+
+    /** Período de cooldown após gravação parar (segundos) */
+    public int getCooldownSeconds() {
+        return config.cooldownSeconds;
+    }
+
+    /** Threshold mínimo de fala para detectar (início) */
+    public double getSpeechDensityMin() {
+        return config.speechDensityMin;
+    }
+
+    /** Threshold mínimo de volume para detectar (início) */
+    public double getLoudDensityMin() {
+        return config.loudDensityMin;
+    }
+
+    /** Threshold de fala para considerar silêncio (fim) */
+    public double getSpeechDensityEnd() {
+        return config.speechDensityEnd;
+    }
+
+    /** Threshold de volume para considerar silêncio (fim) */
+    public double getLoudDensityEnd() {
+        return config.loudDensityEnd;
     }
 }
