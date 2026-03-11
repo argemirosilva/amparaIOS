@@ -223,9 +223,9 @@ public class PhraseEnrollmentManager {
         }
         avgIntraDistance /= Math.max(pairs, 1);
 
-        // Threshold = 2x a distância média intra (margem de segurança)
-        double threshold = avgIntraDistance * 2.0;
-        threshold = Math.max(threshold, 10.0); // mínimo para evitar threshold zero
+        // Threshold = 4x a distância média intra (margem de segurança amigável ao vivo)
+        double threshold = avgIntraDistance * 4.0;
+        threshold = Math.max(threshold, 20.0); // piso bem seguro para evitar confidence < 0.5 em distâncias de ~12.0
 
         // Aplicar threshold a todos os templates
         for (PhraseTemplate template : pendingSamples) {

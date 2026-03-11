@@ -177,22 +177,38 @@ public class AudioTriggerService extends Service {
         pipelineController.setActionListener(new PipelineController.PipelineActionListener() {
             @Override
             public void onStartRecording(String reason) {
-                // Já tratado via detector ou intenção
+                Log.i(TAG, "[ASR-TRIGGER] Iniciando gravação por comando de voz: " + reason);
+                Intent intent = new Intent(context, AudioTriggerService.class);
+                intent.setAction("START_RECORDING");
+                intent.putExtra("origemGravacao", "comando_voz");
+                startService(intent);
             }
 
             @Override
             public void onStopRecording(String reason) {
-                 // Já tratado
+                Log.i(TAG, "[ASR-TRIGGER] Parando gravação por comando de voz: " + reason);
+                Intent intent = new Intent(context, AudioTriggerService.class);
+                intent.setAction("STOP_RECORDING");
+                startService(intent);
             }
 
             @Override
             public void onStartPanic(String reason) {
-                // Já tratado
+                Log.i(TAG, "[ASR-TRIGGER] Iniciando PANICO por comando de voz: " + reason);
+                Intent intent = new Intent(context, AudioTriggerService.class);
+                intent.setAction("PANIC_ACTIVATED");
+                intent.putExtra("activationType", "comando_voz");
+                intent.putExtra("protocolNumber", "ASR_" + System.currentTimeMillis());
+                startService(intent);
             }
 
             @Override
             public void onCancelPanic(String reason) {
-                // Já tratado
+                Log.i(TAG, "[ASR-TRIGGER] Cancelando PANICO por comando de voz: " + reason);
+                Intent intent = new Intent(context, AudioTriggerService.class);
+                intent.setAction("PANIC_DEACTIVATED");
+                intent.putExtra("cancelType", "comando_voz_cancel");
+                startService(intent);
             }
 
             @Override

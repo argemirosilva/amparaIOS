@@ -49,8 +49,8 @@ public class ScoringConfig {
     // 11+ = crítico
 
     // ========== Segurança por comando (SPEC seção 6) ==========
-    public double startRecordingConfidence = 0.70;
-    public double stopRecordingConfidence = 0.80;
+    public double startRecordingConfidence = 0.55;
+    public double stopRecordingConfidence = 0.65;
     /** Gravação não pode ser parada nos primeiros N ms */
     public int stopRecordingMinDurationMs = 30000;
     public double startPanicConfidence = 0.85;
