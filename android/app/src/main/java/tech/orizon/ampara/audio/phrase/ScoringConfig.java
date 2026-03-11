@@ -80,12 +80,12 @@ public class ScoringConfig {
 
     // ========== Histórico de repetição (SPEC seção 10.2) ==========
     /** Limpa entradas mais velhas que N ms */
-    public int repetitionHistoryMaxAgeMs = 30000;
-    public int repetitionHistoryMaxEntries = 10;
+    public int repetitionHistoryMaxAgeMs = 15000;
+    public int repetitionHistoryMaxEntries = 8;
 
     // ========== Confirmation window (L2) ==========
-    public int preTriggerSeconds = 5;
-    public int postTriggerSeconds = 5;
+    public int preTriggerSeconds = 3;
+    public int postTriggerSeconds = 3;
 
     // ========== Enrollment ==========
     /** Duração mínima de frase para aceitar (ms) */
