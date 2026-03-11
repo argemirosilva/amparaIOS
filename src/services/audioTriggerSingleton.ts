@@ -110,7 +110,7 @@ class AudioTriggerSingleton {
   }
 
   // Add event
-  private addEvent(event: AudioTriggerEvent) {
+  public addEvent(event: AudioTriggerEvent) {
     this.events = [event, ...this.events].slice(0, MAX_EVENTS);
     this.notifyStateChange();
   }

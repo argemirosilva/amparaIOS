@@ -348,6 +348,10 @@ class HybridAudioTriggerService {
         import('@/services/audioTriggerSingleton').then(({ audioTriggerSingleton }) => {
           audioTriggerSingleton.setNativeMetrics(event);
         });
+      } else if (event.event === 'phraseDetected') {
+        import('@/services/audioTriggerSingleton').then(({ audioTriggerSingleton }) => {
+          audioTriggerSingleton.addEvent(event as any);
+        });
       }
 
       // Handle calibration status from native
